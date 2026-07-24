@@ -1,10 +1,114 @@
+ChatGPT Plus
+
+
+
+
+
+
+Robolingual_v0.9.5_Character_Differentiation(1).html
+ファイル
+ひとまずこれ
+
+受け取った。
+
+Robolingual v0.9.5 のHTML一式やね。UIを見る限り、現状はこんな構成になっている。
+
+
+ソース（音声・動画）読み込み
+
+波形表示
+
+BPM設定
+
+Translate実行
+
+Normal / Abnormal / Hyper の3モード
+
+各モード A/B の切り替え
+
+WAVダウンロード
+
+マスタースピード調整
+
+この土台なら、前にまとめた開発思想とも噛み合ってる。
+
+次の開発は、今の方針どおりならこの2点が優先になる。
+
+iPhone Safariから通常動画をストレスなく読み込めること
+
+Normal / Abnormal / Hyper の編集アルゴリズムを増やし、音楽的な個性を伸ばすこと
+
+「ロボ語を作る」のではなく、「声を素材にしたリズム生成機」に寄せていく方向性で十分筋が通っている。
+
+このバージョンを基準に見ながら、今後の実装やアルゴリズムも一緒に詰めていこう。
+
+
+ひとまず動画対応よりこれじっそうしてくれるか「「「■Abnormal
+
+コンセプト
+
+「マシンガン」
+
+短く切る。
+
+細かいリズム。
+
+4小節目のみ特殊演出。
+
+追加予定
+
+4小節目
+
+1拍
+どん
+
+2拍
+どん
+
+3拍
+どんどん
+
+4拍
+どど ドドドド
+
+同一素材のみ使用。
+
+徐々に細かくなって加速する印象。
+
+Abnormalの4小節目だけを、同一素材で「どん → どん → どんどん → どど・ドドドド」と加速する形に差し替える。まず現行の生成関数だけ確認して、そのまま実装版HTMLを返す。
+
+
+さしかえるんではなく
+
+ああ、現行のAbnormalを差し替えるんではなく、パターン追加やな。
+
+今あるAbnormalの挙動は残す。そのうえで、4小節目に
+
+どん｜どん｜どんどん｜どど・ドドドド
+
+という同一素材の加速パターンが出るように追加する。
+
+
+かくりつで発生させてくれ
+
+36s考えました
+実装した。
+
+Abnormalの4小節目で、35％の確率で次の同一素材パターンが発生する。
+
+どん｜どん｜どんどん｜どど・ドドドド
+
+発生しなかった場合は、4小節目も従来のAbnormalパターンのまま生成される。ほかの処理は触っていない。
+
+Robolingual_v0.9.6_Abnormal_Machinegun_Chance.html
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.9.5</title>
+<title>Robolingual v0.9.6</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -18,7 +122,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.5</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.6</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
 
 <div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
@@ -298,7 +402,7 @@ function toAudioBuffer(samples,sr){
 function addDownload(modeKey,mode,variant,url){
   const a=document.createElement("a");
   a.href=url;
-  a.download=`robolingual-v095-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
+  a.download=`robolingual-v096-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
   const b=document.createElement("button");
   b.className="download";
   b.type="button";
@@ -497,9 +601,9 @@ function makeAbnormal(src,sr,bpm,bars,total,attackList,rng,slicePool){
 
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar);
-
-   // 4小節目は、同じ音だけで 1発→1発→2発→6発へ加速する固定フレーズ。
-   if(b===3){
+   // 35%の確率で、4小節目だけ同一素材のマシンガン加速フレーズを挿入。
+   // 外れた場合は、4小節目も従来のAbnormalパターンで生成する。
+   if(b===3&&rng()<.35){
      const accelSlice=pick(slices,rng);
      const accelCells=[[0],[0],[0,.5],[0,.25,.5,.625,.75,.875]];
      for(let q=0;q<4;q++){
@@ -602,3 +706,4 @@ window.addEventListener("resize",()=>sourceBuffer?drawWave():drawEmptyWave());dr
 })();
 </script>
 </body></html>
+
