@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.9.7</title>
+<title>Robolingual v0.9.11</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -18,7 +18,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.7</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.11</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
 
 <div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
@@ -117,6 +117,7 @@ function clearURLs(){while(objectURLs.length)URL.revokeObjectURL(objectURLs.pop(
 // ファイル選択画面を開く直前に値を空にして、毎回必ず読み込み処理を開始させる。
 sourceInput.addEventListener("click",()=>{
   sourceInput.value="";
+  setStatus("Waiting for iPhone Photos to hand over the file...");
 });
 
 sourceInput.addEventListener("change",async()=>{
@@ -162,19 +163,9 @@ async function decodeSourceFile(ctx,file,isVideo){
     return await ctx.decodeAudioData(data.slice(0));
   }
 
-  // MP4など、ブラウザがコンテナを直接読める小さな動画だけ先に高速判定。
-  // iPhoneのMOV/HEVCや大きな画面収録は、丸ごとメモリへ複製せず再生経由へ回す。
-  const FAST_VIDEO_LIMIT=24*1024*1024;
-  if(file.size<=FAST_VIDEO_LIMIT){
-    try{
-      setStatus("Checking video audio...");
-      const data=await file.arrayBuffer();
-      return await ctx.decodeAudioData(data.slice(0));
-    }catch(_){
-      // Safariがコンテナを直接デコードできない場合は、下の標準再生経由で抽出する。
-    }
-  }
-
+  // 動画コンテナをdecodeAudioDataへ渡すと、iPhone Safariでは
+  // 失敗せずPromiseが止まり続ける場合がある。
+  // 動画は形式・容量を問わず、必ず明示タップの再生経由で抽出する。
   return await extractVideoAudioByPlayback(ctx,file);
 }
 
@@ -376,9 +367,8 @@ translateButton.addEventListener("click",async()=>{
       const output=maker(mono,sr,bpm,bars,total,attacks,rng,slicePool);
       softLimit(output,.96);
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
-      const blob=encodeWav(output,sr),url=URL.createObjectURL(blob);
-      objectURLs.push(url);
-      addDownload(modeKey,mode,variant,url);
+      const blob=encodeWav(output,sr);
+      addDownload(modeKey,mode,variant,blob);
       await nextFrame();
     }
     results.classList.remove("hidden");
@@ -399,16 +389,36 @@ function toAudioBuffer(samples,sr){
   return buffer;
 }
 
-function addDownload(modeKey,mode,variant,url){
-  const a=document.createElement("a");
-  a.href=url;
-  a.download=`robolingual-v096-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
+function addDownload(modeKey,mode,variant,blob){
+  const fileName=`robolingual-v099-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
   const b=document.createElement("button");
   b.className="download";
   b.type="button";
   b.textContent=variant===0?"Download A":"Download B";
-  a.appendChild(b);
-  document.getElementById(`${modeKey}Downloads`).appendChild(a);
+  b.addEventListener("click",()=>saveWavBlob(blob,fileName));
+  document.getElementById(`${modeKey}Downloads`).appendChild(b);
+}
+
+async function saveWavBlob(blob,fileName){
+  const file=new File([blob],fileName,{type:"audio/wav"});
+  try{
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:fileName});
+      return;
+    }
+  }catch(error){
+    if(error&&error.name==="AbortError")return;
+    console.warn("Share save failed; falling back to download.",error);
+  }
+  const url=URL.createObjectURL(blob);
+  objectURLs.push(url);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=fileName;
+  a.style.display="none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function resetSwitches(){
@@ -699,7 +709,7 @@ function toMono(buffer){const m=new Float32Array(buffer.length);for(let ch=0;ch<
 function encodeWav(samples,sr){const buffer=new ArrayBuffer(44+samples.length*2),view=new DataView(buffer);writeString(view,0,"RIFF");view.setUint32(4,36+samples.length*2,true);writeString(view,8,"WAVE");writeString(view,12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);writeString(view,36,"data");view.setUint32(40,samples.length*2,true);let o=44;for(let i=0;i<samples.length;i++,o+=2){const s=Math.max(-1,Math.min(1,samples[i]));view.setInt16(o,s<0?s*32768:s*32767,true)}return new Blob([view],{type:"audio/wav"})}
 function writeString(view,o,t){for(let i=0;i<t.length;i++)view.setUint8(o+i,t.charCodeAt(i))}
 function drawEmptyWave(){const ctx=resizeCanvas(wave);ctx.fillStyle="#fff";ctx.fillRect(0,0,wave.width,wave.height)}
-function drawWave(){const ctx=resizeCanvas(wave),width=wave.width,height=wave.height,data=mono,step=Math.max(1,Math.floor(data.length/width));ctx.fillStyle="#fff";ctx.fillRect(0,0,width,height);ctx.strokeStyle="#111";ctx.lineWidth=Math.max(1,devicePixelRatio||1);ctx.beginPath();for(let x=0;x<width;x++){let min=1,max=-1,start=x*step,end=Math.min(data.length,start+step);for(let i=start;i<end;i++){const v=data[i];if(v<min)min=v;if(v>max)max=v}ctx.moveTo(x,(1+min)*.5*height);ctx.lineTo(x,(1+max)*.5*height)}ctx.stroke();ctx.strokeStyle="#c40000";ctx.lineWidth=1;for(const a of attacks){const x=a/data.length*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}const bpm=clamp(Number(bpmInput.value)||170,60,260),beatSec=60/bpm,dur=data.length/sourceBuffer.sampleRate;ctx.strokeStyle="#0057b8";for(let t=0;t<dur;t+=beatSec){const x=t/dur*width;ctx.beginPath();ctx.moveTo(x,height-18);ctx.lineTo(x,height);ctx.stroke()}}
+function drawWave(){const ctx=resizeCanvas(wave),width=wave.width,height=wave.height,data=mono,step=Math.max(1,Math.floor(data.length/width));ctx.fillStyle="#fff";ctx.fillRect(0,0,width,height);/* Safari経由の動画抽出は振幅が小さく見える場合があるため、表示だけ自動拡大する。音声データ自体は変更しない。 */let displayPeak=0;const sampleStep=Math.max(1,Math.floor(data.length/12000));for(let i=0;i<data.length;i+=sampleStep)displayPeak=Math.max(displayPeak,Math.abs(data[i]));const displayGain=displayPeak>1e-6?Math.min(24,.9/displayPeak):1;ctx.strokeStyle="#111";ctx.lineWidth=Math.max(1,devicePixelRatio||1);ctx.beginPath();for(let x=0;x<width;x++){let min=1,max=-1,start=x*step,end=Math.min(data.length,start+step);for(let i=start;i<end;i++){const v=Math.max(-1,Math.min(1,data[i]*displayGain));if(v<min)min=v;if(v>max)max=v}ctx.moveTo(x,(1+min)*.5*height);ctx.lineTo(x,(1+max)*.5*height)}ctx.stroke();ctx.strokeStyle="#c40000";ctx.lineWidth=1;for(const a of attacks){const x=a/data.length*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}const bpm=clamp(Number(bpmInput.value)||170,60,260),beatSec=60/bpm,dur=data.length/sourceBuffer.sampleRate;ctx.strokeStyle="#0057b8";for(let t=0;t<dur;t+=beatSec){const x=t/dur*width;ctx.beginPath();ctx.moveTo(x,height-18);ctx.lineTo(x,height);ctx.stroke()}}
 function resizeCanvas(canvas){const r=canvas.getBoundingClientRect(),ratio=devicePixelRatio||1;canvas.width=Math.max(1,Math.floor(r.width*ratio));canvas.height=Math.max(1,Math.floor(r.height*ratio));return canvas.getContext("2d")}
 const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));const pick=(a,r)=>a[Math.floor(r()*a.length)];const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));function cryptoSeed(){if(window.crypto&&crypto.getRandomValues){const v=new Uint32Array(1);crypto.getRandomValues(v);return v[0]}return(Date.now()^Math.floor(Math.random()*4294967295))>>>0}function mulberry32(seed){return function(){let t=seed+=1831565813;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
 window.addEventListener("resize",()=>sourceBuffer?drawWave():drawEmptyWave());drawEmptyWave();
