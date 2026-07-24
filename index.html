@@ -203,7 +203,7 @@ async function extractVideoAudioByPlayback(ctx,file){
   objectURLs.push(url);
 
   const video=document.createElement("video");
-  video.preload="auto";
+  video.preload="metadata";
   video.playsInline=true;
   video.setAttribute("playsinline","");
   video.setAttribute("webkit-playsinline","");
@@ -212,58 +212,46 @@ async function extractVideoAudioByPlayback(ctx,file){
   video.muted=false;
   video.controls=false;
   video.disablePictureInPicture=true;
-  video.style.cssText="position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1";
-  document.body.appendChild(video);
+  // iOS Safariは画面外・極小・完全透明なvideoの読み込みを止めることがある。
+  // そのため読み込み中だけ、実体のある小さなプレビューとして置く。
+  video.style.cssText="display:block;width:160px;max-width:100%;height:90px;margin:8px 0;background:#000;object-fit:contain";
+  status.insertAdjacentElement("afterend",video);
 
+  let actionButton=null;
+  const removeUI=()=>{
+    if(actionButton&&actionButton.parentNode)actionButton.parentNode.removeChild(actionButton);
+    actionButton=null;
+  };
   const removeVideo=()=>{
+    removeUI();
     try{video.pause()}catch(_){}
     video.removeAttribute("src");
     try{video.load()}catch(_){}
     if(video.parentNode)video.parentNode.removeChild(video);
   };
 
-  await new Promise((resolve,reject)=>{
-    let settled=false;
-    const timer=setTimeout(()=>finish(new Error("Video metadata timed out.")),30000);
-    const finish=error=>{
-      if(settled)return;
-      settled=true;
-      clearTimeout(timer);
-      video.removeEventListener("loadedmetadata",ready);
-      video.removeEventListener("canplay",ready);
-      video.removeEventListener("error",fail);
-      error?reject(error):resolve();
-    };
-    const ready=()=>finish();
-    const fail=()=>finish(new Error("Safari could not open this video."));
-    video.addEventListener("loadedmetadata",ready,{once:true});
-    video.addEventListener("canplay",ready,{once:true});
-    video.addEventListener("error",fail,{once:true});
-    video.load();
-  }).catch(error=>{removeVideo();throw error});
-
-  if(!Number.isFinite(video.duration)||video.duration<=0){
-    removeVideo();
-    throw new Error("Video duration is unavailable.");
-  }
-  const videoDuration=video.duration;
-  if(ctx.state==="suspended")await ctx.resume();
+  // 写真アプリから選んだ動画は、選択直後のユーザー操作権限がここまで残らないことがある。
+  // 自動再生に賭けず、最初から明示的な1タップで開始する。
+  setStatus("Video selected — tap START VIDEO READ");
+  actionButton=document.createElement("button");
+  actionButton.type="button";
+  actionButton.textContent="START VIDEO READ";
+  actionButton.style.cssText="display:block;width:100%;margin:8px 0 14px;padding:14px;background:#111;color:#fff";
+  video.insertAdjacentElement("afterend",actionButton);
 
   let mediaSource,processor,silentGain;
   try{
     mediaSource=ctx.createMediaElementSource(video);
     processor=ctx.createScriptProcessor(4096,2,1);
     silentGain=ctx.createGain();
-    // 0にすると一部Safariで処理自体が止まることがあるため、無音に近い値で接続を維持する。
     silentGain.gain.value=.00001;
   }catch(error){
     removeVideo();
     throw error;
   }
 
-  // Robolingualは最終的にモノラル処理するため、抽出時点でモノ化してiPhoneのメモリ消費を半減。
   const monoChunks=[];
-  let capturedFrames=0,finished=false;
+  let capturedFrames=0,finished=false,videoDuration=0;
 
   mediaSource.connect(processor);
   processor.connect(silentGain);
@@ -283,22 +271,20 @@ async function extractVideoAudioByPlayback(ctx,file){
     capturedFrames+=frames;
   };
 
-  const progress=()=>{
-    const pct=Math.min(99,Math.max(0,Math.round(video.currentTime/videoDuration*100)));
-    setStatus(`Reading video audio... ${pct}% — keep Safari open`);
-  };
-  video.addEventListener("timeupdate",progress);
-
-  await new Promise(async(resolve,reject)=>{
+  await new Promise((resolve,reject)=>{
     let done=false;
-    const timeout=setTimeout(()=>finish(new Error("Video audio extraction timed out.")),Math.max(60000,(videoDuration+45)*1000));
+    let timeout=null;
+    const cleanup=()=>{
+      if(timeout)clearTimeout(timeout);
+      video.removeEventListener("ended",onEnded);
+      video.removeEventListener("error",onError);
+      video.removeEventListener("timeupdate",onProgress);
+      actionButton&&actionButton.removeEventListener("click",onStart);
+    };
     const finish=error=>{
       if(done)return;
       done=true;finished=true;
-      clearTimeout(timeout);
-      video.removeEventListener("ended",onEnded);
-      video.removeEventListener("error",onError);
-      video.removeEventListener("timeupdate",progress);
+      cleanup();
       processor.onaudioprocess=null;
       try{mediaSource.disconnect()}catch(_){}
       try{processor.disconnect()}catch(_){}
@@ -307,28 +293,39 @@ async function extractVideoAudioByPlayback(ctx,file){
       error?reject(error):resolve();
     };
     const onEnded=()=>finish();
-    const onError=()=>finish(new Error("Playback failed while reading video audio."));
+    const onError=()=>finish(new Error("Safari could not open or play this video."));
+    const onProgress=()=>{
+      if(!videoDuration&&Number.isFinite(video.duration))videoDuration=video.duration;
+      const pct=videoDuration>0?Math.min(99,Math.max(0,Math.round(video.currentTime/videoDuration*100))):0;
+      setStatus(`Reading video audio... ${pct}% — keep Safari open`);
+    };
+    const onStart=async()=>{
+      actionButton.disabled=true;
+      actionButton.textContent="STARTING...";
+      try{
+        if(ctx.state==="suspended")await ctx.resume();
+        video.currentTime=0;
+        video.load();
+        setStatus("Opening video...");
+        await video.play();
+        removeUI();
+        if(Number.isFinite(video.duration)&&video.duration>0)videoDuration=video.duration;
+        timeout=setTimeout(()=>finish(new Error("Video audio extraction timed out.")),Math.max(60000,((videoDuration||30)+45)*1000));
+      }catch(error){
+        finish(new Error("Safari could not start the selected video."));
+      }
+    };
+
     video.addEventListener("ended",onEnded,{once:true});
     video.addEventListener("error",onError,{once:true});
-
-    try{
-      video.currentTime=0;
-      setStatus("Reading video audio... 0% — keep Safari open");
-      await video.play();
-    }catch(_){
-      try{
-        await requestVideoPlayback(video,ctx);
-      }catch(error){
-        finish(error);
-      }
-    }
+    video.addEventListener("timeupdate",onProgress);
+    actionButton.addEventListener("click",onStart,{once:true});
   });
 
-  if(capturedFrames<1){
-    throw new Error("No audio track was found in this video.");
-  }
+  if(capturedFrames<1)throw new Error("No audio track was found in this video.");
 
-  const expectedFrames=Math.ceil(videoDuration*ctx.sampleRate);
+  const duration=videoDuration>0?videoDuration:capturedFrames/ctx.sampleRate;
+  const expectedFrames=Math.ceil(duration*ctx.sampleRate);
   const outputFrames=Math.min(capturedFrames,expectedFrames+4096);
   const out=ctx.createBuffer(1,outputFrames,ctx.sampleRate);
   const target=out.getChannelData(0);
@@ -341,6 +338,7 @@ async function extractVideoAudioByPlayback(ctx,file){
   }
   return out;
 }
+
 [bpmInput,barsInput].forEach(el=>el.addEventListener("input",()=>sourceBuffer&&drawWave()));
 translateButton.addEventListener("click",async()=>{
   if(!sourceBuffer||!mono)return;
