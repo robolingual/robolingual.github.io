@@ -156,20 +156,46 @@ async function decodeSourceFile(ctx,file,isVideo){
     return await ctx.decodeAudioData(data.slice(0));
   }
 
-  // Small browser-decodable videos take the instant path first.
-  // Large iPhone videos skip the full ArrayBuffer copy to avoid memory spikes.
-  const FAST_VIDEO_LIMIT=64*1024*1024;
+  // MP4など、ブラウザがコンテナを直接読める小さな動画だけ先に高速判定。
+  // iPhoneのMOV/HEVCや大きな画面収録は、丸ごとメモリへ複製せず再生経由へ回す。
+  const FAST_VIDEO_LIMIT=24*1024*1024;
   if(file.size<=FAST_VIDEO_LIMIT){
     try{
       setStatus("Checking video audio...");
       const data=await file.arrayBuffer();
       return await ctx.decodeAudioData(data.slice(0));
     }catch(_){
-      // Safari commonly cannot decode the container directly; continue below.
+      // Safariがコンテナを直接デコードできない場合は、下の標準再生経由で抽出する。
     }
   }
 
   return await extractVideoAudioByPlayback(ctx,file);
+}
+
+function requestVideoPlayback(video,ctx){
+  return new Promise((resolve,reject)=>{
+    const button=document.createElement("button");
+    button.type="button";
+    button.textContent="Tap to read video audio";
+    button.style.cssText="display:block;width:100%;margin:8px 0 14px;padding:14px;background:#111;color:#fff";
+    status.insertAdjacentElement("afterend",button);
+    setStatus("Video is ready — tap once to read its audio");
+
+    const cleanup=()=>{if(button.parentNode)button.parentNode.removeChild(button)};
+    button.addEventListener("click",async()=>{
+      button.disabled=true;
+      button.textContent="Starting...";
+      try{
+        if(ctx.state==="suspended")await ctx.resume();
+        await video.play();
+        cleanup();
+        resolve();
+      }catch(error){
+        cleanup();
+        reject(new Error("Safari could not start the selected video."));
+      }
+    },{once:true});
+  });
 }
 
 async function extractVideoAudioByPlayback(ctx,file){
@@ -181,12 +207,12 @@ async function extractVideoAudioByPlayback(ctx,file){
   video.playsInline=true;
   video.setAttribute("playsinline","");
   video.setAttribute("webkit-playsinline","");
-  video.crossOrigin="anonymous";
   video.src=url;
   video.volume=1;
   video.muted=false;
   video.controls=false;
-  video.style.cssText="position:fixed;left:-2px;bottom:-2px;width:1px;height:1px;opacity:.01;pointer-events:none";
+  video.disablePictureInPicture=true;
+  video.style.cssText="position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1";
   document.body.appendChild(video);
 
   const removeVideo=()=>{
@@ -198,7 +224,7 @@ async function extractVideoAudioByPlayback(ctx,file){
 
   await new Promise((resolve,reject)=>{
     let settled=false;
-    const timer=setTimeout(()=>finish(new Error("Video metadata timed out.")),20000);
+    const timer=setTimeout(()=>finish(new Error("Video metadata timed out.")),30000);
     const finish=error=>{
       if(settled)return;
       settled=true;
@@ -209,7 +235,7 @@ async function extractVideoAudioByPlayback(ctx,file){
       error?reject(error):resolve();
     };
     const ready=()=>finish();
-    const fail=()=>finish(new Error("This browser could not open the video."));
+    const fail=()=>finish(new Error("Safari could not open this video."));
     video.addEventListener("loadedmetadata",ready,{once:true});
     video.addEventListener("canplay",ready,{once:true});
     video.addEventListener("error",fail,{once:true});
@@ -226,16 +252,18 @@ async function extractVideoAudioByPlayback(ctx,file){
   let mediaSource,processor,silentGain;
   try{
     mediaSource=ctx.createMediaElementSource(video);
-    processor=ctx.createScriptProcessor(4096,2,2);
+    processor=ctx.createScriptProcessor(4096,2,1);
     silentGain=ctx.createGain();
-    silentGain.gain.value=0;
+    // 0にすると一部Safariで処理自体が止まることがあるため、無音に近い値で接続を維持する。
+    silentGain.gain.value=.00001;
   }catch(error){
     removeVideo();
     throw error;
   }
 
-  const channelChunks=[[],[]];
-  let channelCount=0,capturedFrames=0,finished=false;
+  // Robolingualは最終的にモノラル処理するため、抽出時点でモノ化してiPhoneのメモリ消費を半減。
+  const monoChunks=[];
+  let capturedFrames=0,finished=false;
 
   mediaSource.connect(processor);
   processor.connect(silentGain);
@@ -244,22 +272,26 @@ async function extractVideoAudioByPlayback(ctx,file){
   processor.onaudioprocess=event=>{
     if(finished)return;
     const input=event.inputBuffer;
-    channelCount=Math.max(channelCount,input.numberOfChannels);
-    for(let ch=0;ch<input.numberOfChannels;ch++){
-      channelChunks[ch].push(new Float32Array(input.getChannelData(ch)));
+    const frames=input.length;
+    const channels=Math.max(1,input.numberOfChannels);
+    const chunk=new Float32Array(frames);
+    for(let ch=0;ch<channels;ch++){
+      const data=input.getChannelData(ch);
+      for(let i=0;i<frames;i++)chunk[i]+=data[i]/channels;
     }
-    capturedFrames+=input.length;
+    monoChunks.push(chunk);
+    capturedFrames+=frames;
   };
 
   const progress=()=>{
     const pct=Math.min(99,Math.max(0,Math.round(video.currentTime/videoDuration*100)));
-    setStatus(`Extracting video audio... ${pct}% — keep this tab open`);
+    setStatus(`Reading video audio... ${pct}% — keep Safari open`);
   };
   video.addEventListener("timeupdate",progress);
 
   await new Promise(async(resolve,reject)=>{
     let done=false;
-    const timeout=setTimeout(()=>finish(new Error("Video audio extraction timed out.")),Math.max(45000,(videoDuration+30)*1000));
+    const timeout=setTimeout(()=>finish(new Error("Video audio extraction timed out.")),Math.max(60000,(videoDuration+45)*1000));
     const finish=error=>{
       if(done)return;
       done=true;finished=true;
@@ -275,35 +307,37 @@ async function extractVideoAudioByPlayback(ctx,file){
       error?reject(error):resolve();
     };
     const onEnded=()=>finish();
-    const onError=()=>finish(new Error("Playback failed while extracting audio."));
+    const onError=()=>finish(new Error("Playback failed while reading video audio."));
     video.addEventListener("ended",onEnded,{once:true});
     video.addEventListener("error",onError,{once:true});
 
     try{
       video.currentTime=0;
-      setStatus("Extracting video audio... 0% — keep this tab open");
+      setStatus("Reading video audio... 0% — keep Safari open");
       await video.play();
     }catch(_){
-      finish(new Error("Safari blocked video playback. Choose the file again."));
+      try{
+        await requestVideoPlayback(video,ctx);
+      }catch(error){
+        finish(error);
+      }
     }
   });
 
-  if(capturedFrames<1||channelCount<1){
-    throw new Error("No audio track was captured from this video.");
+  if(capturedFrames<1){
+    throw new Error("No audio track was found in this video.");
   }
 
-  // Remove the final ScriptProcessor padding while preserving the full soundtrack.
   const expectedFrames=Math.ceil(videoDuration*ctx.sampleRate);
   const outputFrames=Math.min(capturedFrames,expectedFrames+4096);
-  const out=ctx.createBuffer(channelCount,outputFrames,ctx.sampleRate);
-  for(let ch=0;ch<channelCount;ch++){
-    const target=out.getChannelData(ch);
-    let offset=0;
-    for(const chunk of channelChunks[ch]){
-      if(offset>=outputFrames)break;
-      target.set(chunk.subarray(0,Math.min(chunk.length,outputFrames-offset)),offset);
-      offset+=Math.min(chunk.length,outputFrames-offset);
-    }
+  const out=ctx.createBuffer(1,outputFrames,ctx.sampleRate);
+  const target=out.getChannelData(0);
+  let offset=0;
+  for(const chunk of monoChunks){
+    if(offset>=outputFrames)break;
+    const count=Math.min(chunk.length,outputFrames-offset);
+    target.set(chunk.subarray(0,count),offset);
+    offset+=count;
   }
   return out;
 }
