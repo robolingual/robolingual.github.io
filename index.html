@@ -1,114 +1,10 @@
-ChatGPT Plus
-
-
-
-
-
-
-Robolingual_v0.9.5_Character_Differentiation(1).html
-ファイル
-ひとまずこれ
-
-受け取った。
-
-Robolingual v0.9.5 のHTML一式やね。UIを見る限り、現状はこんな構成になっている。
-
-
-ソース（音声・動画）読み込み
-
-波形表示
-
-BPM設定
-
-Translate実行
-
-Normal / Abnormal / Hyper の3モード
-
-各モード A/B の切り替え
-
-WAVダウンロード
-
-マスタースピード調整
-
-この土台なら、前にまとめた開発思想とも噛み合ってる。
-
-次の開発は、今の方針どおりならこの2点が優先になる。
-
-iPhone Safariから通常動画をストレスなく読み込めること
-
-Normal / Abnormal / Hyper の編集アルゴリズムを増やし、音楽的な個性を伸ばすこと
-
-「ロボ語を作る」のではなく、「声を素材にしたリズム生成機」に寄せていく方向性で十分筋が通っている。
-
-このバージョンを基準に見ながら、今後の実装やアルゴリズムも一緒に詰めていこう。
-
-
-ひとまず動画対応よりこれじっそうしてくれるか「「「■Abnormal
-
-コンセプト
-
-「マシンガン」
-
-短く切る。
-
-細かいリズム。
-
-4小節目のみ特殊演出。
-
-追加予定
-
-4小節目
-
-1拍
-どん
-
-2拍
-どん
-
-3拍
-どんどん
-
-4拍
-どど ドドドド
-
-同一素材のみ使用。
-
-徐々に細かくなって加速する印象。
-
-Abnormalの4小節目だけを、同一素材で「どん → どん → どんどん → どど・ドドドド」と加速する形に差し替える。まず現行の生成関数だけ確認して、そのまま実装版HTMLを返す。
-
-
-さしかえるんではなく
-
-ああ、現行のAbnormalを差し替えるんではなく、パターン追加やな。
-
-今あるAbnormalの挙動は残す。そのうえで、4小節目に
-
-どん｜どん｜どんどん｜どど・ドドドド
-
-という同一素材の加速パターンが出るように追加する。
-
-
-かくりつで発生させてくれ
-
-36s考えました
-実装した。
-
-Abnormalの4小節目で、35％の確率で次の同一素材パターンが発生する。
-
-どん｜どん｜どんどん｜どど・ドドドド
-
-発生しなかった場合は、4小節目も従来のAbnormalパターンのまま生成される。ほかの処理は触っていない。
-
-Robolingual_v0.9.6_Abnormal_Machinegun_Chance.html
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.9.6</title>
+<title>Robolingual v0.9.7</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -122,7 +18,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.6</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.7</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
 
 <div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
@@ -217,24 +113,67 @@ function buildSoundLogoTrack(total,sr,bpm){
   return out;
 }
 function clearURLs(){while(objectURLs.length)URL.revokeObjectURL(objectURLs.pop())}
-sourceInput.addEventListener("change",async()=>{stopMixer(true);clearURLs();results.classList.add("hidden");translateButton.disabled=true;sourceBuffer=null;mono=null;attacks=[];const file=sourceInput.files&&sourceInput.files[0];if(!file){filename.textContent="No source";drawEmptyWave();return}filename.textContent=file.name;setStatus(file.type.startsWith("video/")?"Loading video audio...":"Loading audio...");try{const ctx=getAudioContext();if(ctx.state==="suspended")await ctx.resume();const data=await file.arrayBuffer();sourceBuffer=await decodeSourceFile(ctx,data,file);mono=toMono(sourceBuffer);attacks=detectAttacks(mono,sourceBuffer.sampleRate);drawWave();translateButton.disabled=false;setStatus(`Ready — ${file.type.startsWith("video/")?"video audio / ":""}${attacks.length} attacks detected`)}catch(e){console.error(e);drawEmptyWave();const ext=(file.name.split(".").pop()||"").toUpperCase();setStatus(`Could not extract audio from ${ext||"this file"}. Try exporting from CapCut with HDR off and H.264.`)}});
-async function decodeSourceFile(ctx,data,file){
-  // Audio files and browser-decodable video files use the fast path first.
-  try{
-    return await ctx.decodeAudioData(data.slice(0));
-  }catch(firstError){
-    if(!file.type.startsWith("video/")) throw firstError;
-  }
+sourceInput.addEventListener("change",async()=>{
+  stopMixer(true);
+  clearURLs();
+  results.classList.add("hidden");
+  translateButton.disabled=true;
+  sourceBuffer=null;mono=null;attacks=[];
 
-  // iPhone CapCut fallback:
-  // Safari may play a video that decodeAudioData cannot open. In that case,
-  // play the local video through Web Audio and record its PCM output.
-  return await extractVideoAudioByPlayback(ctx,data,file);
+  const file=sourceInput.files&&sourceInput.files[0];
+  if(!file){filename.textContent="No source";drawEmptyWave();return}
+
+  filename.textContent=file.name;
+  const isVideo=isVideoFile(file);
+  setStatus(isVideo?"Preparing video audio...":"Loading audio...");
+
+  try{
+    const ctx=getAudioContext();
+    if(ctx.state==="suspended")await ctx.resume();
+    sourceBuffer=await decodeSourceFile(ctx,file,isVideo);
+    mono=toMono(sourceBuffer);
+    attacks=detectAttacks(mono,sourceBuffer.sampleRate);
+    drawWave();
+    translateButton.disabled=false;
+    setStatus(`Ready — ${isVideo?"video audio / ":""}${attacks.length} attacks detected`);
+  }catch(e){
+    console.error(e);
+    drawEmptyWave();
+    const ext=(file.name.split(".").pop()||"").toUpperCase();
+    const detail=e&&e.message?` (${e.message})`:"";
+    setStatus(`Could not extract audio from ${ext||"this file"}${detail}`);
+  }
+});
+
+function isVideoFile(file){
+  if(file.type&&file.type.startsWith("video/"))return true;
+  return /\.(mp4|m4v|mov|qt|webm)$/i.test(file.name||"");
 }
 
-async function extractVideoAudioByPlayback(ctx,data,file){
-  const blob=new Blob([data],{type:file.type||"video/mp4"});
-  const url=URL.createObjectURL(blob);
+async function decodeSourceFile(ctx,file,isVideo){
+  if(!isVideo){
+    const data=await file.arrayBuffer();
+    return await ctx.decodeAudioData(data.slice(0));
+  }
+
+  // Small browser-decodable videos take the instant path first.
+  // Large iPhone videos skip the full ArrayBuffer copy to avoid memory spikes.
+  const FAST_VIDEO_LIMIT=64*1024*1024;
+  if(file.size<=FAST_VIDEO_LIMIT){
+    try{
+      setStatus("Checking video audio...");
+      const data=await file.arrayBuffer();
+      return await ctx.decodeAudioData(data.slice(0));
+    }catch(_){
+      // Safari commonly cannot decode the container directly; continue below.
+    }
+  }
+
+  return await extractVideoAudioByPlayback(ctx,file);
+}
+
+async function extractVideoAudioByPlayback(ctx,file){
+  const url=URL.createObjectURL(file);
   objectURLs.push(url);
 
   const video=document.createElement("video");
@@ -242,91 +181,110 @@ async function extractVideoAudioByPlayback(ctx,data,file){
   video.playsInline=true;
   video.setAttribute("playsinline","");
   video.setAttribute("webkit-playsinline","");
+  video.crossOrigin="anonymous";
   video.src=url;
   video.volume=1;
+  video.muted=false;
+  video.controls=false;
+  video.style.cssText="position:fixed;left:-2px;bottom:-2px;width:1px;height:1px;opacity:.01;pointer-events:none";
+  document.body.appendChild(video);
+
+  const removeVideo=()=>{
+    try{video.pause()}catch(_){}
+    video.removeAttribute("src");
+    try{video.load()}catch(_){}
+    if(video.parentNode)video.parentNode.removeChild(video);
+  };
 
   await new Promise((resolve,reject)=>{
-    const done=()=>{cleanup();resolve()};
-    const fail=()=>{cleanup();reject(new Error("The browser could not open this video."))};
-    const cleanup=()=>{
-      video.removeEventListener("loadedmetadata",done);
-      video.removeEventListener("canplay",done);
+    let settled=false;
+    const timer=setTimeout(()=>finish(new Error("Video metadata timed out.")),20000);
+    const finish=error=>{
+      if(settled)return;
+      settled=true;
+      clearTimeout(timer);
+      video.removeEventListener("loadedmetadata",ready);
+      video.removeEventListener("canplay",ready);
       video.removeEventListener("error",fail);
+      error?reject(error):resolve();
     };
-    video.addEventListener("loadedmetadata",done,{once:true});
-    video.addEventListener("canplay",done,{once:true});
+    const ready=()=>finish();
+    const fail=()=>finish(new Error("This browser could not open the video."));
+    video.addEventListener("loadedmetadata",ready,{once:true});
+    video.addEventListener("canplay",ready,{once:true});
     video.addEventListener("error",fail,{once:true});
     video.load();
-  });
+  }).catch(error=>{removeVideo();throw error});
 
   if(!Number.isFinite(video.duration)||video.duration<=0){
+    removeVideo();
     throw new Error("Video duration is unavailable.");
   }
+  const videoDuration=video.duration;
+  if(ctx.state==="suspended")await ctx.resume();
 
-  if(ctx.state==="suspended") await ctx.resume();
-
-  const mediaSource=ctx.createMediaElementSource(video);
-  const processor=ctx.createScriptProcessor(4096,2,2);
-  const silentGain=ctx.createGain();
-  silentGain.gain.value=0;
+  let mediaSource,processor,silentGain;
+  try{
+    mediaSource=ctx.createMediaElementSource(video);
+    processor=ctx.createScriptProcessor(4096,2,2);
+    silentGain=ctx.createGain();
+    silentGain.gain.value=0;
+  }catch(error){
+    removeVideo();
+    throw error;
+  }
 
   const channelChunks=[[],[]];
-  let channelCount=0;
-  let capturedFrames=0;
-  let finished=false;
+  let channelCount=0,capturedFrames=0,finished=false;
 
   mediaSource.connect(processor);
   processor.connect(silentGain);
   silentGain.connect(ctx.destination);
 
-  processor.onaudioprocess=(event)=>{
+  processor.onaudioprocess=event=>{
     if(finished)return;
     const input=event.inputBuffer;
     channelCount=Math.max(channelCount,input.numberOfChannels);
     for(let ch=0;ch<input.numberOfChannels;ch++){
-      const copy=new Float32Array(input.getChannelData(ch));
-      channelChunks[ch].push(copy);
+      channelChunks[ch].push(new Float32Array(input.getChannelData(ch)));
     }
     capturedFrames+=input.length;
   };
 
   const progress=()=>{
-    const pct=Math.min(100,Math.round((video.currentTime/video.duration)*100));
-    setStatus(`Extracting CapCut video audio... ${pct}%`);
+    const pct=Math.min(99,Math.max(0,Math.round(video.currentTime/videoDuration*100)));
+    setStatus(`Extracting video audio... ${pct}% — keep this tab open`);
   };
   video.addEventListener("timeupdate",progress);
 
   await new Promise(async(resolve,reject)=>{
-    const timeout=setTimeout(()=>{
-      finish();
-      reject(new Error("Video audio extraction timed out."));
-    },Math.max(30000,(video.duration+20)*1000));
-
-    const finish=()=>{
-      if(finished)return;
-      finished=true;
+    let done=false;
+    const timeout=setTimeout(()=>finish(new Error("Video audio extraction timed out.")),Math.max(45000,(videoDuration+30)*1000));
+    const finish=error=>{
+      if(done)return;
+      done=true;finished=true;
       clearTimeout(timeout);
       video.removeEventListener("ended",onEnded);
       video.removeEventListener("error",onError);
       video.removeEventListener("timeupdate",progress);
       processor.onaudioprocess=null;
-      try{video.pause()}catch(_){}
       try{mediaSource.disconnect()}catch(_){}
       try{processor.disconnect()}catch(_){}
       try{silentGain.disconnect()}catch(_){}
+      removeVideo();
+      error?reject(error):resolve();
     };
-    const onEnded=()=>{finish();resolve()};
-    const onError=()=>{finish();reject(new Error("Playback failed while extracting audio."))};
-
+    const onEnded=()=>finish();
+    const onError=()=>finish(new Error("Playback failed while extracting audio."));
     video.addEventListener("ended",onEnded,{once:true});
     video.addEventListener("error",onError,{once:true});
 
     try{
       video.currentTime=0;
+      setStatus("Extracting video audio... 0% — keep this tab open");
       await video.play();
-    }catch(error){
-      finish();
-      reject(new Error("Tap Choose Audio / Video again and allow video playback."));
+    }catch(_){
+      finish(new Error("Safari blocked video playback. Choose the file again."));
     }
   });
 
@@ -334,13 +292,17 @@ async function extractVideoAudioByPlayback(ctx,data,file){
     throw new Error("No audio track was captured from this video.");
   }
 
-  const out=ctx.createBuffer(channelCount,capturedFrames,ctx.sampleRate);
+  // Remove the final ScriptProcessor padding while preserving the full soundtrack.
+  const expectedFrames=Math.ceil(videoDuration*ctx.sampleRate);
+  const outputFrames=Math.min(capturedFrames,expectedFrames+4096);
+  const out=ctx.createBuffer(channelCount,outputFrames,ctx.sampleRate);
   for(let ch=0;ch<channelCount;ch++){
     const target=out.getChannelData(ch);
     let offset=0;
     for(const chunk of channelChunks[ch]){
-      target.set(chunk,offset);
-      offset+=chunk.length;
+      if(offset>=outputFrames)break;
+      target.set(chunk.subarray(0,Math.min(chunk.length,outputFrames-offset)),offset);
+      offset+=Math.min(chunk.length,outputFrames-offset);
     }
   }
   return out;
@@ -706,4 +668,3 @@ window.addEventListener("resize",()=>sourceBuffer?drawWave():drawEmptyWave());dr
 })();
 </script>
 </body></html>
-
