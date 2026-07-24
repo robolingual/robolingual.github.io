@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.6</title>
+<title>Robolingual v0.8</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -18,9 +18,9 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.6</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.8</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
-<div class="row"><label>iPhone</label><div class="hint">写真アプリ／ファイルから動画を選択可能。MOV・MP4・M4Vの音声を読み込む。</div></div>
+<div class="row"><label>iPhone</label><div class="hint">写真アプリ／ファイルから動画を選択可能。CapCut動画は通常デコード失敗時に再生経由で音声抽出する。</div></div>
 <div class="row"><label>Waveform</label><div><canvas id="wave"></canvas><div class="legend"><span><i class="dot black"></i>Wave</span><span><i class="dot red"></i>Detected attacks</span><span><i class="dot blue"></i>Beat grid preview</span></div></div></div>
 <div class="row"><label>Timing</label><div class="controls"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><span>BPM</span><input id="bars" type="number" min="1" max="16" step="1" value="4"><span>bars</span><span class="hint">4/4固定。1拍目と3拍目は同じ刻み。2拍目と4拍目で変化を作る。</span></div></div>
 <button id="translate" disabled>Translate</button><div id="status"></div>
@@ -32,11 +32,137 @@ const sourceInput=document.getElementById("source"),filename=document.getElement
 let sourceBuffer=null,audioContext=null,mono=null,attacks=[];const objectURLs=[];const setStatus=t=>status.textContent=t;
 function getAudioContext(){if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();return audioContext}
 function clearURLs(){while(objectURLs.length)URL.revokeObjectURL(objectURLs.pop())}
-sourceInput.addEventListener("change",async()=>{clearURLs();results.classList.add("hidden");translateButton.disabled=true;sourceBuffer=null;mono=null;attacks=[];const file=sourceInput.files&&sourceInput.files[0];if(!file){filename.textContent="No source";drawEmptyWave();return}filename.textContent=file.name;setStatus(file.type.startsWith("video/")?"Loading video audio...":"Loading audio...");try{const ctx=getAudioContext();if(ctx.state==="suspended")await ctx.resume();const data=await file.arrayBuffer();sourceBuffer=await decodeSourceFile(ctx,data,file);mono=toMono(sourceBuffer);attacks=detectAttacks(mono,sourceBuffer.sampleRate);drawWave();translateButton.disabled=false;setStatus(`Ready — ${file.type.startsWith("video/")?"video audio / ":""}${attacks.length} attacks detected`)}catch(e){console.error(e);drawEmptyWave();const ext=(file.name.split(".").pop()||"").toUpperCase();setStatus(`Could not decode ${ext||"this file"}. On iPhone, use MOV / MP4 with AAC audio.`)}});
-async function decodeSourceFile(ctx,data,file){try{return await ctx.decodeAudioData(data.slice(0))}catch(firstError){const type=file.type||"application/octet-stream",blob=new Blob([data],{type}),url=URL.createObjectURL(blob);objectURLs.push(url);try{const response=await fetch(url),retryData=await response.arrayBuffer();return await ctx.decodeAudioData(retryData.slice(0))}catch(secondError){throw firstError}}}
+sourceInput.addEventListener("change",async()=>{clearURLs();results.classList.add("hidden");translateButton.disabled=true;sourceBuffer=null;mono=null;attacks=[];const file=sourceInput.files&&sourceInput.files[0];if(!file){filename.textContent="No source";drawEmptyWave();return}filename.textContent=file.name;setStatus(file.type.startsWith("video/")?"Loading video audio...":"Loading audio...");try{const ctx=getAudioContext();if(ctx.state==="suspended")await ctx.resume();const data=await file.arrayBuffer();sourceBuffer=await decodeSourceFile(ctx,data,file);mono=toMono(sourceBuffer);attacks=detectAttacks(mono,sourceBuffer.sampleRate);drawWave();translateButton.disabled=false;setStatus(`Ready — ${file.type.startsWith("video/")?"video audio / ":""}${attacks.length} attacks detected`)}catch(e){console.error(e);drawEmptyWave();const ext=(file.name.split(".").pop()||"").toUpperCase();setStatus(`Could not extract audio from ${ext||"this file"}. Try exporting from CapCut with HDR off and H.264.`)}});
+async function decodeSourceFile(ctx,data,file){
+  // Audio files and browser-decodable video files use the fast path first.
+  try{
+    return await ctx.decodeAudioData(data.slice(0));
+  }catch(firstError){
+    if(!file.type.startsWith("video/")) throw firstError;
+  }
+
+  // iPhone CapCut fallback:
+  // Safari may play a video that decodeAudioData cannot open. In that case,
+  // play the local video through Web Audio and record its PCM output.
+  return await extractVideoAudioByPlayback(ctx,data,file);
+}
+
+async function extractVideoAudioByPlayback(ctx,data,file){
+  const blob=new Blob([data],{type:file.type||"video/mp4"});
+  const url=URL.createObjectURL(blob);
+  objectURLs.push(url);
+
+  const video=document.createElement("video");
+  video.preload="auto";
+  video.playsInline=true;
+  video.setAttribute("playsinline","");
+  video.setAttribute("webkit-playsinline","");
+  video.src=url;
+  video.volume=1;
+
+  await new Promise((resolve,reject)=>{
+    const done=()=>{cleanup();resolve()};
+    const fail=()=>{cleanup();reject(new Error("The browser could not open this video."))};
+    const cleanup=()=>{
+      video.removeEventListener("loadedmetadata",done);
+      video.removeEventListener("canplay",done);
+      video.removeEventListener("error",fail);
+    };
+    video.addEventListener("loadedmetadata",done,{once:true});
+    video.addEventListener("canplay",done,{once:true});
+    video.addEventListener("error",fail,{once:true});
+    video.load();
+  });
+
+  if(!Number.isFinite(video.duration)||video.duration<=0){
+    throw new Error("Video duration is unavailable.");
+  }
+
+  if(ctx.state==="suspended") await ctx.resume();
+
+  const mediaSource=ctx.createMediaElementSource(video);
+  const processor=ctx.createScriptProcessor(4096,2,2);
+  const silentGain=ctx.createGain();
+  silentGain.gain.value=0;
+
+  const channelChunks=[[],[]];
+  let channelCount=0;
+  let capturedFrames=0;
+  let finished=false;
+
+  mediaSource.connect(processor);
+  processor.connect(silentGain);
+  silentGain.connect(ctx.destination);
+
+  processor.onaudioprocess=(event)=>{
+    if(finished)return;
+    const input=event.inputBuffer;
+    channelCount=Math.max(channelCount,input.numberOfChannels);
+    for(let ch=0;ch<input.numberOfChannels;ch++){
+      const copy=new Float32Array(input.getChannelData(ch));
+      channelChunks[ch].push(copy);
+    }
+    capturedFrames+=input.length;
+  };
+
+  const progress=()=>{
+    const pct=Math.min(100,Math.round((video.currentTime/video.duration)*100));
+    setStatus(`Extracting CapCut video audio... ${pct}%`);
+  };
+  video.addEventListener("timeupdate",progress);
+
+  await new Promise(async(resolve,reject)=>{
+    const timeout=setTimeout(()=>{
+      finish();
+      reject(new Error("Video audio extraction timed out."));
+    },Math.max(30000,(video.duration+20)*1000));
+
+    const finish=()=>{
+      if(finished)return;
+      finished=true;
+      clearTimeout(timeout);
+      video.removeEventListener("ended",onEnded);
+      video.removeEventListener("error",onError);
+      video.removeEventListener("timeupdate",progress);
+      processor.onaudioprocess=null;
+      try{video.pause()}catch(_){}
+      try{mediaSource.disconnect()}catch(_){}
+      try{processor.disconnect()}catch(_){}
+      try{silentGain.disconnect()}catch(_){}
+    };
+    const onEnded=()=>{finish();resolve()};
+    const onError=()=>{finish();reject(new Error("Playback failed while extracting audio."))};
+
+    video.addEventListener("ended",onEnded,{once:true});
+    video.addEventListener("error",onError,{once:true});
+
+    try{
+      video.currentTime=0;
+      await video.play();
+    }catch(error){
+      finish();
+      reject(new Error("Tap Choose Audio / Video again and allow video playback."));
+    }
+  });
+
+  if(capturedFrames<1||channelCount<1){
+    throw new Error("No audio track was captured from this video.");
+  }
+
+  const out=ctx.createBuffer(channelCount,capturedFrames,ctx.sampleRate);
+  for(let ch=0;ch<channelCount;ch++){
+    const target=out.getChannelData(ch);
+    let offset=0;
+    for(const chunk of channelChunks[ch]){
+      target.set(chunk,offset);
+      offset+=chunk.length;
+    }
+  }
+  return out;
+}
 [bpmInput,barsInput].forEach(el=>el.addEventListener("input",()=>sourceBuffer&&drawWave()));
 translateButton.addEventListener("click",async()=>{if(!sourceBuffer||!mono)return;const bpm=clamp(Number(bpmInput.value)||170,60,260),bars=clamp(Math.round(Number(barsInput.value)||4),1,16);bpmInput.value=String(Math.round(bpm));barsInput.value=String(bars);translateButton.disabled=true;clearURLs();setStatus("Translating on beat grid...");await nextFrame();try{const sr=sourceBuffer.sampleRate,total=Math.floor(sr*(60/bpm)*4*bars),jobs=[["normalOutputs","Normal",0,makeNormal],["normalOutputs","Normal",1,makeNormal],["abnormalOutputs","Abnormal",0,makeAbnormal],["abnormalOutputs","Abnormal",1,makeAbnormal],["hyperOutputs","Hyper",0,makeHyper],["hyperOutputs","Hyper",1,makeHyper]];normalOutputs.innerHTML="";abnormalOutputs.innerHTML="";hyperOutputs.innerHTML="";for(const[targetId,mode,variant,maker]of jobs){const rng=mulberry32(cryptoSeed()),output=maker(mono,sr,bpm,bars,total,attacks,rng);softLimit(output,.96);const blob=encodeWav(output,sr),url=URL.createObjectURL(blob);objectURLs.push(url);addOutputCard(targetId,mode,variant,url);await nextFrame()}results.classList.remove("hidden");setStatus("Translated — attack heads aligned to the beat grid")}catch(e){console.error(e);setStatus("Translation failed.")}finally{translateButton.disabled=false}});
-function addOutputCard(targetId,mode,variant,url){const card=document.createElement("div");card.className="card";const tag=document.createElement("div");tag.className="tag";tag.textContent=variant===0?"A":"B";const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=url;const a=document.createElement("a");a.href=url;a.download=`robolingual-v06-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;const b=document.createElement("button");b.className="download";b.textContent="Download";a.appendChild(b);card.append(tag,audio,a);document.getElementById(targetId).appendChild(card)}
+function addOutputCard(targetId,mode,variant,url){const card=document.createElement("div");card.className="card";const tag=document.createElement("div");tag.className="tag";tag.textContent=variant===0?"A":"B";const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=url;const a=document.createElement("a");a.href=url;a.download=`robolingual-v08-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;const b=document.createElement("button");b.className="download";b.textContent="Download";a.appendChild(b);card.append(tag,audio,a);document.getElementById(targetId).appendChild(card)}
 
 function detectAttacks(src,sr){const hop=Math.max(64,Math.floor(sr*.005)),win=Math.max(hop*2,Math.floor(sr*.02)),env=[];for(let p=0;p<src.length;p+=hop){let sum=0,end=Math.min(src.length,p+win);for(let i=p;i<end;i++)sum+=src[i]*src[i];env.push(Math.sqrt(sum/Math.max(1,end-p)))}let max=0;for(const v of env)if(v>max)max=v;const floor=max*.035,minGap=Math.floor(.065*sr/hop);const out=[];let last=-minGap;for(let i=2;i<env.length-2;i++){const rise=env[i]-Math.min(env[i-2],env[i-1]),local=env[i]>=env[i-1]&&env[i]>=env[i+1];if(env[i]>floor&&rise>max*.018&&local&&i-last>=minGap){let sample=i*hop;const search=Math.min(src.length,sample+Math.floor(sr*.018));while(sample<search&&Math.abs(src[sample])<maxAbs(src,sample,search)*.12)sample++;out.push(sample);last=i}}if(!out.length)out.push(0);return out}
 function maxAbs(src,a,b){let m=0;for(let i=a;i<b;i++)m=Math.max(m,Math.abs(src[i]));return m}
