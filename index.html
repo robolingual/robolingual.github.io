@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.9.11</title>
+<title>Robolingual v0.9.12</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -18,7 +18,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.11</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.12</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
 
 <div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
@@ -113,10 +113,9 @@ function buildSoundLogoTrack(total,sr,bpm){
   return out;
 }
 function clearURLs(){while(objectURLs.length)URL.revokeObjectURL(objectURLs.pop())}
-// iPhone Safariでは同じ動画をもう一度選ぶと change が発火しないことがある。
-// ファイル選択画面を開く直前に値を空にして、毎回必ず読み込み処理を開始させる。
+// 同じファイルを再選択できるようにする。iPhoneでは選択前に value を消すと
+// 写真アプリから戻った直後の file を失う場合があるため、取得後にリセットする。
 sourceInput.addEventListener("click",()=>{
-  sourceInput.value="";
   setStatus("Waiting for iPhone Photos to hand over the file...");
 });
 
@@ -129,6 +128,8 @@ sourceInput.addEventListener("change",async()=>{
 
   const file=sourceInput.files&&sourceInput.files[0];
   if(!file){filename.textContent="No source";drawEmptyWave();return}
+  // File オブジェクトを確保してから input を空にする。これで同じ動画も再選択できる。
+  sourceInput.value="";
 
   filename.textContent=file.name;
   const isVideo=isVideoFile(file);
@@ -153,8 +154,15 @@ sourceInput.addEventListener("change",async()=>{
 });
 
 function isVideoFile(file){
-  if(file.type&&file.type.startsWith("video/"))return true;
-  return /\.(mp4|m4v|mov|qt|webm)$/i.test(file.name||"");
+  const type=(file.type||"").toLowerCase();
+  const name=(file.name||"").toLowerCase();
+  if(type.startsWith("video/"))return true;
+  if(type.startsWith("audio/"))return false;
+  if(/\.(mp4|m4v|mov|qt|webm|3gp|3g2|avi|mkv)$/i.test(name))return true;
+  if(/\.(wav|mp3|m4a|aac|flac|ogg|oga|opus|aif|aiff)$/i.test(name))return false;
+  // iPhoneの「写真」経由では MIME や拡張子が空になる場合がある。
+  // 不明なメディアは、止まり続ける decodeAudioData へ送らず動画経路に倒す。
+  return true;
 }
 
 async function decodeSourceFile(ctx,file,isVideo){
@@ -235,6 +243,8 @@ async function extractVideoAudioByPlayback(ctx,file){
   actionButton.textContent="START VIDEO READ";
   actionButton.style.cssText="display:block;width:100%;margin:8px 0 14px;padding:14px;background:#111;color:#fff";
   video.insertAdjacentElement("afterend",actionButton);
+  // Safariにボタンを先に描画させる。Web Audioの準備はその次に行う。
+  await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
 
   let mediaSource,processor,silentGain;
   try{
