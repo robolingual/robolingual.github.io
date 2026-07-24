@@ -4,27 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.8</title>
+<title>Robolingual v0.9.1</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
 .window{width:min(860px,100%);margin:0 auto;border:2px solid var(--ink);background:var(--panel);box-shadow:6px 6px 0 var(--shadow)}
 .titlebar{height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:2px solid var(--ink);background:repeating-linear-gradient(to bottom,#fff 0,#fff 2px,#aaa 2px,#aaa 4px);font-weight:700}.closebox{width:18px;height:18px;border:2px solid var(--ink);background:#ddd;flex:0 0 auto}.title{background:var(--panel);padding:2px 10px;margin:auto;transform:translateX(-13px)}
-main{padding:18px}.row{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;margin-bottom:16px}label{font-weight:700}.filebox{display:flex;gap:10px;align-items:center;min-width:0}
+main{padding:18px}.row{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;margin-bottom:12px}label{font-weight:700}.filebox{display:flex;gap:10px;align-items:center;min-width:0}
 button,.file-button,input,select{font:inherit}button,.file-button,select{appearance:none;border:2px solid var(--ink);background:#e9e9e9;color:var(--ink);box-shadow:2px 2px 0 #777;padding:10px 14px;cursor:pointer;font-weight:700;border-radius:0}button:active,.file-button:active{box-shadow:none;transform:translate(2px,2px)}button:disabled{color:#777;cursor:not-allowed}input[type=file]{display:none}#filename{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
-#wave{width:100%;height:180px;border:2px solid var(--ink);background:#fff;display:block}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#bpm,#bars{width:92px;border:2px solid var(--ink);background:#fff;padding:9px;border-radius:0;font-weight:700}.hint{font-size:12px;color:#333}
-#translate{width:100%;font-size:20px;padding:15px;background:var(--ink);color:#fff;box-shadow:4px 4px 0 #777;margin:4px 0 18px}#status{min-height:22px;margin:0 0 16px;font-size:14px;font-weight:700}.mode{border-top:2px solid var(--ink);padding:16px 0 2px}.mode h2{margin:0 0 4px;font-size:18px}.mode p{margin:0 0 12px;font-size:12px}.outputs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{border:2px solid var(--ink);background:#ddd;padding:10px}.tag{font-size:13px;font-weight:700;margin-bottom:8px}audio{width:100%;height:36px;display:block;margin-bottom:8px}.download{width:100%;padding:8px}.hidden{display:none}.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px}.dot{display:inline-block;width:10px;height:10px;border:1px solid #111;margin-right:4px;vertical-align:-1px}.red{background:#c40000}.blue{background:#0057b8}.black{background:#111}
+#wave{width:100%;height:180px;border:2px solid var(--ink);background:#fff;display:block}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#bpm,#bars{width:92px;border:2px solid var(--ink);background:#fff;padding:9px;border-radius:0;font-weight:700}
+#translate{width:100%;font-size:20px;padding:15px;background:var(--ink);color:#fff;box-shadow:4px 4px 0 #777;margin:4px 0 14px}#status{min-height:22px;margin:0 0 16px;font-size:14px;font-weight:700}.mode{border-top:2px solid var(--ink);padding:16px 0 2px}.mode h2{margin:0 0 4px;font-size:18px}.mode p{margin:0 0 12px;font-size:12px}.outputs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{border:2px solid var(--ink);background:#ddd;padding:10px}.tag{font-size:13px;font-weight:700;margin-bottom:8px}audio{width:100%;height:36px;display:block;margin-bottom:8px}.download{width:100%;padding:8px}.hidden{display:none}
 @media(max-width:600px){body{padding:10px}main{padding:12px}.row{grid-template-columns:1fr;gap:6px}.outputs{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.8</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.1</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
-<div class="row"><label>iPhone</label><div class="hint">写真アプリ／ファイルから動画を選択可能。CapCut動画は通常デコード失敗時に再生経由で音声抽出する。</div></div>
-<div class="row"><label>Waveform</label><div><canvas id="wave"></canvas><div class="legend"><span><i class="dot black"></i>Wave</span><span><i class="dot red"></i>Detected attacks</span><span><i class="dot blue"></i>Beat grid preview</span></div></div></div>
-<div class="row"><label>Timing</label><div class="controls"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><span>BPM</span><input id="bars" type="number" min="1" max="16" step="1" value="4"><span>bars</span><span class="hint">4/4固定。1拍目と3拍目は同じ刻み。2拍目と4拍目で変化を作る。</span></div></div>
+
+<div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
+<div class="row"><label>Timing</label><div class="controls"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><span>BPM</span><input id="bars" type="number" min="1" max="16" step="1" value="4"><span>bars</span></div></div>
 <button id="translate" disabled>Translate</button><div id="status"></div>
-<section id="results" class="hidden"><div class="mode"><h2>Normal</h2><p>ピッチ変更なし。1拍目＝3拍目を軸に、2拍目・4拍目で刻みを変化。</p><div class="outputs" id="normalOutputs"></div></div><div class="mode"><h2>Abnormal</h2><p>同一断片のマシンガンサンプル。1拍目＝3拍目、密度だけを変化。ピッチ変更なし。</p><div class="outputs" id="abnormalOutputs"></div></div><div class="mode"><h2>Hyper</h2><p>NormalとAbnormalを小節単位で切り替える。</p><div class="outputs" id="hyperOutputs"></div></div></section>
+<section id="results" class="hidden"><div class="mode"><h2>Normal</h2><div class="outputs" id="normalOutputs"></div></div><div class="mode"><h2>Abnormal</h2><div class="outputs" id="abnormalOutputs"></div></div><div class="mode"><h2>Hyper</h2><div class="outputs" id="hyperOutputs"></div></div></section>
 </main></div>
 <script>
 (()=>{"use strict";
@@ -162,17 +162,106 @@ async function extractVideoAudioByPlayback(ctx,data,file){
 }
 [bpmInput,barsInput].forEach(el=>el.addEventListener("input",()=>sourceBuffer&&drawWave()));
 translateButton.addEventListener("click",async()=>{if(!sourceBuffer||!mono)return;const bpm=clamp(Number(bpmInput.value)||170,60,260),bars=clamp(Math.round(Number(barsInput.value)||4),1,16);bpmInput.value=String(Math.round(bpm));barsInput.value=String(bars);translateButton.disabled=true;clearURLs();setStatus("Translating on beat grid...");await nextFrame();try{const sr=sourceBuffer.sampleRate,total=Math.floor(sr*(60/bpm)*4*bars),jobs=[["normalOutputs","Normal",0,makeNormal],["normalOutputs","Normal",1,makeNormal],["abnormalOutputs","Abnormal",0,makeAbnormal],["abnormalOutputs","Abnormal",1,makeAbnormal],["hyperOutputs","Hyper",0,makeHyper],["hyperOutputs","Hyper",1,makeHyper]];normalOutputs.innerHTML="";abnormalOutputs.innerHTML="";hyperOutputs.innerHTML="";for(const[targetId,mode,variant,maker]of jobs){const rng=mulberry32(cryptoSeed()),output=maker(mono,sr,bpm,bars,total,attacks,rng);softLimit(output,.96);const blob=encodeWav(output,sr),url=URL.createObjectURL(blob);objectURLs.push(url);addOutputCard(targetId,mode,variant,url);await nextFrame()}results.classList.remove("hidden");setStatus("Translated — attack heads aligned to the beat grid")}catch(e){console.error(e);setStatus("Translation failed.")}finally{translateButton.disabled=false}});
-function addOutputCard(targetId,mode,variant,url){const card=document.createElement("div");card.className="card";const tag=document.createElement("div");tag.className="tag";tag.textContent=variant===0?"A":"B";const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=url;const a=document.createElement("a");a.href=url;a.download=`robolingual-v08-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;const b=document.createElement("button");b.className="download";b.textContent="Download";a.appendChild(b);card.append(tag,audio,a);document.getElementById(targetId).appendChild(card)}
+function addOutputCard(targetId,mode,variant,url){const card=document.createElement("div");card.className="card";const tag=document.createElement("div");tag.className="tag";tag.textContent=variant===0?"A":"B";const audio=document.createElement("audio");audio.controls=true;audio.preload="metadata";audio.src=url;const a=document.createElement("a");a.href=url;a.download=`robolingual-v091-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;const b=document.createElement("button");b.className="download";b.textContent="Download";a.appendChild(b);card.append(tag,audio,a);document.getElementById(targetId).appendChild(card)}
 
 function detectAttacks(src,sr){const hop=Math.max(64,Math.floor(sr*.005)),win=Math.max(hop*2,Math.floor(sr*.02)),env=[];for(let p=0;p<src.length;p+=hop){let sum=0,end=Math.min(src.length,p+win);for(let i=p;i<end;i++)sum+=src[i]*src[i];env.push(Math.sqrt(sum/Math.max(1,end-p)))}let max=0;for(const v of env)if(v>max)max=v;const floor=max*.035,minGap=Math.floor(.065*sr/hop);const out=[];let last=-minGap;for(let i=2;i<env.length-2;i++){const rise=env[i]-Math.min(env[i-2],env[i-1]),local=env[i]>=env[i-1]&&env[i]>=env[i+1];if(env[i]>floor&&rise>max*.018&&local&&i-last>=minGap){let sample=i*hop;const search=Math.min(src.length,sample+Math.floor(sr*.018));while(sample<search&&Math.abs(src[sample])<maxAbs(src,sample,search)*.12)sample++;out.push(sample);last=i}}if(!out.length)out.push(0);return out}
 function maxAbs(src,a,b){let m=0;for(let i=a;i<b;i++)m=Math.max(m,Math.abs(src[i]));return m}
 function makeSlices(src,sr,attackList){const list=[];for(let i=0;i<attackList.length;i++){const start=attackList[i],next=i+1<attackList.length?attackList[i+1]:src.length;let end=Math.min(src.length,Math.max(start+Math.floor(sr*.09),next));const maxLen=Math.floor(sr*1.8);end=Math.min(end,start+maxLen);if(end-start>=Math.floor(sr*.045))list.push({start,end,length:end-start})}return list.length?list:[{start:0,end:Math.min(src.length,Math.floor(sr*.5)),length:Math.min(src.length,Math.floor(sr*.5))}]}
 function grooveCell(rng,normalMode){if(normalMode)return pick([[0],[0,.5],[0,.75],[0,.5,.75]],rng);return pick([[0],[0,.5],[0,.25,.5,.75],[0,.25,.5,.75,.875]],rng)}
 function renderBeatCell(out,src,beatStart,beatLength,cell,sl,sr,gain,rng,natural){for(let i=0;i<cell.length;i++){const pos=cell[i],next=i+1<cell.length?cell[i+1]:1,dest=beatStart+Math.floor(pos*beatLength),space=Math.max(1,Math.floor((next-pos)*beatLength)),len=natural?Math.min(Math.floor(space*.92),Math.max(Math.floor(sr*.06),sl.length)):Math.max(Math.floor(sr*.025),Math.min(sl.length,Math.floor(space*(.58+rng()*.24))));if(natural)renderNatural(out,src,dest,sl,len,gain,rng);else renderOneShot(out,src,dest,sl.start,len,gain)}}
-function makeNormal(src,sr,bpm,bars,total,attackList,rng){const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=makeSlices(src,sr,attackList);let sharedAnchor=null;for(let b=0;b<bars;b++){const base=Math.floor(b*bar);if(b%2===0||!sharedAnchor)sharedAnchor=grooveCell(rng,true);const beat2=grooveCell(rng,true),beat4=grooveCell(rng,true),cells=[sharedAnchor,beat2,sharedAnchor,beat4];for(let q=0;q<4;q++){const sl=pickWeightedSlice(slices,rng,true);renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],sl,sr,.78+rng()*.14,rng,true)}}return out}
-function makeAbnormal(src,sr,bpm,bars,total,attackList,rng){const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=makeSlices(src,sr,attackList);let sharedAnchor=null;for(let b=0;b<bars;b++){const base=Math.floor(b*bar),sl=pickWeightedSlice(slices,rng,false);if(b%2===0||!sharedAnchor)sharedAnchor=grooveCell(rng,false);const beat2=grooveCell(rng,false),beat4=grooveCell(rng,false),cells=[sharedAnchor,beat2,sharedAnchor,beat4];for(let q=0;q<4;q++)renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],sl,sr,.72+rng()*.16,rng,false)}return out}
+function makeNormal(src,sr,bpm,bars,total,attackList,rng){
+ const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=makeSlices(src,sr,attackList);
+ let sharedAnchor=null;
+ for(let b=0;b<bars;b++){
+   const base=Math.floor(b*bar);
+   if(b%2===0||!sharedAnchor)sharedAnchor=grooveCell(rng,true);
+   const beat2=grooveCell(rng,true),beat4=grooveCell(rng,true),cells=[sharedAnchor,beat2,sharedAnchor,beat4];
+
+   // Normalの通常グルーヴ。Beat1=Beat3、アンカーは2小節維持。
+   for(let q=0;q<4;q++){
+     const sl=pickWeightedSlice(slices,rng,true);
+     renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],sl,sr,.72+rng()*.12,rng,true);
+   }
+
+   // 2拍目または4拍目に、最大3拍の長音を追加。
+   // 長音中は 0, +1, +2, +3, +4, +5 半音へ段階的に上昇する。
+   if(rng()<.72){
+     const startBeat=rng()<.58?1:3;
+     const maxRemaining=Math.max(1,Math.min(3,Math.floor((total-(base+startBeat*beat))/beat)));
+     const sustainBeats=1+Math.floor(rng()*maxRemaining);
+     const sl=pickWeightedSlice(slices,rng,true);
+     const dest=base+Math.floor(startBeat*beat);
+     const target=Math.min(total-dest,Math.floor(beat*sustainBeats));
+     renderPitchRise(out,src,dest,sl,target,.64+rng()*.12);
+   }
+ }
+ return out
+}
+function makeAbnormal(src,sr,bpm,bars,total,attackList,rng){
+ const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
+ const slices=ensureMinimumSlices(makeSlices(src,sr,attackList),src,sr,3);
+ let sharedAnchor=null,sharedAnchorSlice=null;
+
+ for(let b=0;b<bars;b++){
+   const base=Math.floor(b*bar);
+   if(b%2===0||!sharedAnchor){
+     sharedAnchor=grooveCell(rng,false);
+     sharedAnchorSlice=pick(slices,rng);
+   }
+
+   // 各小節で最低3種類のスライスを必ず使用。
+   const others=slices.filter(s=>s!==sharedAnchorSlice);
+   const slice2=pick(others.length?others:slices,rng);
+   const remaining=others.filter(s=>s!==slice2);
+   const slice4=pick(remaining.length?remaining:others.length?others:slices,rng);
+
+   const beat2=grooveCell(rng,false),beat4=grooveCell(rng,false);
+   const cells=[sharedAnchor,beat2,sharedAnchor,beat4];
+   const beatSlices=[sharedAnchorSlice,slice2,sharedAnchorSlice,slice4];
+
+   for(let q=0;q<4;q++){
+     renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],beatSlices[q],sr,.70+rng()*.15,rng,false);
+   }
+ }
+ return out
+}
 function makeHyper(src,sr,bpm,bars,total,attackList,rng){const out=new Float32Array(total),beat=sr*60/bpm,bar=Math.floor(beat*4);for(let b=0;b<bars;b++){const localTotal=Math.min(bar,total-b*bar),mode=(b%3===2||rng()<.42)?"ab":"normal",tmp=mode==="ab"?makeAbnormal(src,sr,bpm,1,localTotal,attackList,rng):makeNormal(src,sr,bpm,1,localTotal,attackList,rng);for(let i=0;i<tmp.length&&b*bar+i<out.length;i++)out[b*bar+i]+=tmp[i]}return out}
 function pickWeightedSlice(slices,rng,longPreferred){const filtered=slices.filter(s=>longPreferred?s.length>12000:s.length>1500);return pick(filtered.length?filtered:slices,rng)}
+function ensureMinimumSlices(slices,src,sr,count){
+ if(slices.length>=count)return slices;
+ const out=slices.slice();
+ const seg=Math.max(Math.floor(sr*.08),Math.floor(src.length/count));
+ for(let i=0;out.length<count&&i<count;i++){
+   const start=Math.min(src.length-1,i*seg);
+   const end=Math.min(src.length,start+seg);
+   if(end-start>=Math.floor(sr*.045))out.push({start,end,length:end-start});
+ }
+ while(out.length<count)out.push(out[out.length%Math.max(1,out.length)]||{start:0,end:Math.min(src.length,Math.floor(sr*.25)),length:Math.min(src.length,Math.floor(sr*.25))});
+ return out
+}
+function renderPitchRise(out,src,dest,sl,target,gain){
+ if(target<=0||sl.length<2)return;
+ const attack=Math.min(96,Math.max(16,Math.floor(target*.01)));
+ const release=Math.min(Math.floor(target*.18),Math.max(128,Math.floor(target*.08)));
+ const loopStart=sl.start+Math.floor(sl.length*.35);
+ const loopLength=Math.max(2,sl.end-loopStart);
+ let phase=0;
+ for(let i=0;i<target&&dest+i<out.length;i++){
+   const progress=i/Math.max(1,target-1);
+   const semitone=Math.min(5,Math.floor(progress*6));
+   const ratio=Math.pow(2,semitone/12);
+   let pos;
+   if(phase<sl.length-1)pos=sl.start+phase;
+   else pos=loopStart+((phase-(sl.length-1))%loopLength);
+   const p0=Math.floor(pos),p1=Math.min(src.length-1,p0+1),frac=pos-p0;
+   const sample=src[p0]*(1-frac)+src[p1]*frac;
+   let env=1;
+   if(i<attack)env=i/attack;
+   if(i>target-release)env=Math.min(env,Math.max(0,(target-i)/release));
+   out[dest+i]+=sample*gain*env;
+   phase+=ratio;
+ }
+}
 function renderOneShot(out,src,dest,start,length,gain){const attack=Math.min(48,Math.max(8,Math.floor(length*.015))),release=Math.max(24,Math.floor(length*.12));for(let i=0;i<length;i++){const d=dest+i,s=start+i;if(d>=out.length||s>=src.length)break;let env=1;if(i<attack)env=i/attack;if(i>length-release)env=Math.max(0,(length-i)/release);out[d]+=src[s]*gain*env}}
 function renderNatural(out,src,dest,sl,target,gain,rng){if(target<=0)return;const copy=Math.min(sl.length,target);renderOneShot(out,src,dest,sl.start,copy,gain);if(target>copy){const tailStart=Math.max(sl.start,sl.end-Math.min(Math.floor((sl.end-sl.start)*.35),Math.floor(src.length*.02)+Math.floor((sl.end-sl.start)*.2))),tailLen=Math.max(64,sl.end-tailStart);let pos=copy;while(pos<target&&dest+pos<out.length){const chunk=Math.min(tailLen,target-pos);for(let i=0;i<chunk;i++){const d=dest+pos+i,s=tailStart+(i%tailLen),fade=Math.min(1,i/64,(chunk-i)/64);out[d]+=src[s]*gain*.78*Math.max(.15,fade)}pos+=chunk}}}
 function softLimit(data,target){let peak=0;for(let i=0;i<data.length;i++){data[i]=Math.tanh(data[i]*1.25);peak=Math.max(peak,Math.abs(data[i]))}if(peak<1e-7)return;const k=target/peak;for(let i=0;i<data.length;i++)data[i]*=k}
