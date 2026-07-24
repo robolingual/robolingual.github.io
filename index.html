@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.9.4</title>
+<title>Robolingual v0.9.5</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -18,7 +18,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.4</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.5</div></div><main>
 <div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
 
 <div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
@@ -57,7 +57,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
   <div class="speed-title">MASTER<br>SPEED</div>
   <div id="speedValue" class="speed-value">1.00×</div>
   <div class="speed-scale">
-    <div class="speed-labels"><span>3.0×</span><span>2.0×</span><span>1.0×</span><span>0.5×</span><span>⅓×</span></div>
+    <div class="speed-labels"><span>⅓×</span><span>0.5×</span><span>1.0×</span><span>2.0×</span><span>3.0×</span></div>
     <input id="speedSlider" class="speed-slider" type="range" min="-1000" max="1000" step="1" value="0" aria-label="Master speed, one third to 3 times">
   </div>
   <button id="speedReset" class="speed-reset" type="button">RESET 1.00×</button>
@@ -255,20 +255,21 @@ translateButton.addEventListener("click",async()=>{
     const sr=sourceBuffer.sampleRate,total=Math.floor(sr*(60/bpm)*4*bars);
     await loadSoundLogo();
     renderedSoundLogo=buildSoundLogoTrack(total,sr,bpm);
+    const variantPools=splitVariantSlices(makeSlices(mono,sr,attacks),mono,sr);
     const jobs=[
-      ["normal","a","Normal",0,makeNormal],
-      ["normal","b","Normal",1,makeNormal],
-      ["abnormal","a","Abnormal",0,makeAbnormal],
-      ["abnormal","b","Abnormal",1,makeAbnormal],
-      ["hyper","a","Hyper",0,makeHyper],
-      ["hyper","b","Hyper",1,makeHyper]
+      ["normal","a","Normal",0,makeNormal,variantPools.a],
+      ["normal","b","Normal",1,makeNormal,variantPools.b],
+      ["abnormal","a","Abnormal",0,makeAbnormal,variantPools.a],
+      ["abnormal","b","Abnormal",1,makeAbnormal,variantPools.b],
+      ["hyper","a","Hyper",0,makeHyper,variantPools.a],
+      ["hyper","b","Hyper",1,makeHyper,variantPools.b]
     ];
     normalDownloads.innerHTML="";
     abnormalDownloads.innerHTML="";
     hyperDownloads.innerHTML="";
-    for(const[modeKey,variantKey,mode,variant,maker]of jobs){
+    for(const[modeKey,variantKey,mode,variant,maker,slicePool]of jobs){
       const rng=mulberry32(cryptoSeed());
-      const output=maker(mono,sr,bpm,bars,total,attacks,rng);
+      const output=maker(mono,sr,bpm,bars,total,attacks,rng,slicePool);
       softLimit(output,.96);
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
       const blob=encodeWav(output,sr),url=URL.createObjectURL(blob);
@@ -297,7 +298,7 @@ function toAudioBuffer(samples,sr){
 function addDownload(modeKey,mode,variant,url){
   const a=document.createElement("a");
   a.href=url;
-  a.download=`robolingual-v094-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
+  a.download=`robolingual-v095-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
   const b=document.createElement("button");
   b.className="download";
   b.type="button";
@@ -368,7 +369,7 @@ function updateMixer(){
 }
 
 function sliderToRate(value){
-  const v=Number(value)/1000;return Math.pow(3,v);
+  const v=Number(value)/1000;return Math.pow(3,-v);
 }
 
 function setMasterRate(rate){
@@ -435,49 +436,83 @@ speedReset.addEventListener("click",resetMasterRate);
 function detectAttacks(src,sr){const hop=Math.max(64,Math.floor(sr*.005)),win=Math.max(hop*2,Math.floor(sr*.02)),env=[];for(let p=0;p<src.length;p+=hop){let sum=0,end=Math.min(src.length,p+win);for(let i=p;i<end;i++)sum+=src[i]*src[i];env.push(Math.sqrt(sum/Math.max(1,end-p)))}let max=0;for(const v of env)if(v>max)max=v;const floor=max*.035,minGap=Math.floor(.065*sr/hop);const out=[];let last=-minGap;for(let i=2;i<env.length-2;i++){const rise=env[i]-Math.min(env[i-2],env[i-1]),local=env[i]>=env[i-1]&&env[i]>=env[i+1];if(env[i]>floor&&rise>max*.018&&local&&i-last>=minGap){let sample=i*hop;const search=Math.min(src.length,sample+Math.floor(sr*.018));while(sample<search&&Math.abs(src[sample])<maxAbs(src,sample,search)*.12)sample++;out.push(sample);last=i}}if(!out.length)out.push(0);return out}
 function maxAbs(src,a,b){let m=0;for(let i=a;i<b;i++)m=Math.max(m,Math.abs(src[i]));return m}
 function makeSlices(src,sr,attackList){const list=[];for(let i=0;i<attackList.length;i++){const start=attackList[i],next=i+1<attackList.length?attackList[i+1]:src.length;let end=Math.min(src.length,Math.max(start+Math.floor(sr*.09),next));const maxLen=Math.floor(sr*1.8);end=Math.min(end,start+maxLen);if(end-start>=Math.floor(sr*.045))list.push({start,end,length:end-start})}return list.length?list:[{start:0,end:Math.min(src.length,Math.floor(sr*.5)),length:Math.min(src.length,Math.floor(sr*.5))}]}
+function splitVariantSlices(slices,src,sr){
+  let unique=[];
+  const seen=new Set();
+  for(const sl of slices){
+    const key=`${sl.start}:${sl.end}`;
+    if(!seen.has(key)){seen.add(key);unique.push(sl)}
+  }
+  if(unique.length<2){
+    const minLen=Math.max(2,Math.floor(sr*.06));
+    const mid=Math.max(minLen,Math.floor(src.length/2));
+    unique=[
+      {start:0,end:Math.min(src.length,mid),length:Math.min(src.length,mid)},
+      {start:Math.min(src.length-1,mid),end:src.length,length:Math.max(1,src.length-Math.min(src.length-1,mid))}
+    ].filter(sl=>sl.length>=minLen);
+  }
+  const a=[],b=[];
+  for(let i=0;i<unique.length;i++)(i%2===0?a:b).push(unique[i]);
+  if(!a.length&&b.length)a.push(b.shift());
+  if(!b.length&&a.length>1)b.push(a.pop());
+  return {a,b};
+}
 function grooveCell(rng,normalMode){if(normalMode)return pick([[0],[0,.5],[0,.75],[0,.5,.75]],rng);return pick([[0],[0,.5],[0,.25,.5,.75],[0,.25,.5,.75,.875]],rng)}
 function renderBeatCell(out,src,beatStart,beatLength,cell,sl,sr,gain,rng,natural){for(let i=0;i<cell.length;i++){const pos=cell[i],next=i+1<cell.length?cell[i+1]:1,dest=beatStart+Math.floor(pos*beatLength),space=Math.max(1,Math.floor((next-pos)*beatLength)),len=natural?Math.min(Math.floor(space*.92),Math.max(Math.floor(sr*.06),sl.length)):Math.max(Math.floor(sr*.025),Math.min(sl.length,Math.floor(space*(.58+rng()*.24))));if(natural)renderNatural(out,src,dest,sl,len,gain,rng);else renderOneShot(out,src,dest,sl.start,len,gain)}}
-function makeNormal(src,sr,bpm,bars,total,attackList,rng){
- const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=makeSlices(src,sr,attackList);
+function makeNormal(src,sr,bpm,bars,total,attackList,rng,slicePool){
+ const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
  let sharedAnchor=null;
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar);
    if(b%2===0||!sharedAnchor)sharedAnchor=grooveCell(rng,true);
    const beat2=grooveCell(rng,true),beat4=grooveCell(rng,true),cells=[sharedAnchor,beat2,sharedAnchor,beat4];
 
-   // Normalの通常グルーヴ。Beat1=Beat3、アンカーは2小節維持。
    for(let q=0;q<4;q++){
      const sl=pickWeightedSlice(slices,rng,true);
      renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],sl,sr,.72+rng()*.12,rng,true);
    }
 
-   // 2拍目または4拍目に、最大3拍の長音を追加。
-   // 長音中は 0, +1, +2, +3, +4, +5 半音へ段階的に上昇する。
    if(rng()<.72){
      const startBeat=rng()<.58?1:3;
-     const maxRemaining=Math.max(1,Math.min(3,Math.floor((total-(base+startBeat*beat))/beat)));
-     const sustainBeats=1+Math.floor(rng()*maxRemaining);
-     const sl=pickWeightedSlice(slices,rng,true);
      const dest=base+Math.floor(startBeat*beat);
+     const remainingBeats=Math.floor((total-dest)/beat);
+     const wantsReturn=rng()<.24&&remainingBeats>=2;
+     const maxSingle=wantsReturn?Math.min(3,Math.floor(remainingBeats/2)):Math.min(3,Math.max(1,remainingBeats));
+     const sustainBeats=1+Math.floor(rng()*Math.max(1,maxSingle));
+     const sl=pickWeightedSlice(slices,rng,true);
      const target=Math.min(total-dest,Math.floor(beat*sustainBeats));
-     renderPitchRise(out,src,dest,sl,target,.64+rng()*.12);
+     const gain=.64+rng()*.12;
+     renderPitchRise(out,src,dest,sl,target,gain);
+     if(wantsReturn&&dest+target*2<=total){
+       renderPitchFall(out,src,dest+target,sl,target,gain);
+     }
    }
  }
  return out
 }
-function makeAbnormal(src,sr,bpm,bars,total,attackList,rng){
+function makeAbnormal(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
- const slices=ensureMinimumSlices(makeSlices(src,sr,attackList),src,sr,3);
+ const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,3);
  let sharedAnchor=null,sharedAnchorSlice=null;
 
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar);
+
+   // 4小節目は、同じ音だけで 1発→1発→2発→6発へ加速する固定フレーズ。
+   if(b===3){
+     const accelSlice=pick(slices,rng);
+     const accelCells=[[0],[0],[0,.5],[0,.25,.5,.625,.75,.875]];
+     for(let q=0;q<4;q++){
+       renderBeatCell(out,src,base+Math.floor(q*beat),beat,accelCells[q],accelSlice,sr,.76+rng()*.08,rng,false);
+     }
+     continue;
+   }
+
    if(b%2===0||!sharedAnchor){
      sharedAnchor=grooveCell(rng,false);
      sharedAnchorSlice=pick(slices,rng);
    }
 
-   // 各小節で最低3種類のスライスを必ず使用。
    const others=slices.filter(s=>s!==sharedAnchorSlice);
    const slice2=pick(others.length?others:slices,rng);
    const remaining=others.filter(s=>s!==slice2);
@@ -493,7 +528,7 @@ function makeAbnormal(src,sr,bpm,bars,total,attackList,rng){
  }
  return out
 }
-function makeHyper(src,sr,bpm,bars,total,attackList,rng){const out=new Float32Array(total),beat=sr*60/bpm,bar=Math.floor(beat*4);for(let b=0;b<bars;b++){const localTotal=Math.min(bar,total-b*bar),mode=(b%3===2||rng()<.42)?"ab":"normal",tmp=mode==="ab"?makeAbnormal(src,sr,bpm,1,localTotal,attackList,rng):makeNormal(src,sr,bpm,1,localTotal,attackList,rng);for(let i=0;i<tmp.length&&b*bar+i<out.length;i++)out[b*bar+i]+=tmp[i]}return out}
+function makeHyper(src,sr,bpm,bars,total,attackList,rng,slicePool){const out=new Float32Array(total),beat=sr*60/bpm,bar=Math.floor(beat*4);for(let b=0;b<bars;b++){const localTotal=Math.min(bar,total-b*bar),mode=(b%3===2||rng()<.42)?"ab":"normal",tmp=mode==="ab"?makeAbnormal(src,sr,bpm,1,localTotal,attackList,rng,slicePool):makeNormal(src,sr,bpm,1,localTotal,attackList,rng,slicePool);for(let i=0;i<tmp.length&&b*bar+i<out.length;i++)out[b*bar+i]+=tmp[i]}return out}
 function pickWeightedSlice(slices,rng,longPreferred){const filtered=slices.filter(s=>longPreferred?s.length>12000:s.length>1500);return pick(filtered.length?filtered:slices,rng)}
 function ensureMinimumSlices(slices,src,sr,count){
  if(slices.length>=count)return slices;
@@ -522,6 +557,29 @@ function renderPitchRise(out,src,dest,sl,target,gain){
    if(phase<sl.length-1)pos=sl.start+phase;
    else pos=loopStart+((phase-(sl.length-1))%loopLength);
    const p0=Math.floor(pos),p1=Math.min(src.length-1,p0+1),frac=pos-p0;
+   const sample=src[p0]*(1-frac)+src[p1]*frac;
+   let env=1;
+   if(i<attack)env=i/attack;
+   if(i>target-release)env=Math.min(env,Math.max(0,(target-i)/release));
+   out[dest+i]+=sample*gain*env;
+   phase+=ratio;
+ }
+}
+function renderPitchFall(out,src,dest,sl,target,gain){
+ if(target<=0||sl.length<2)return;
+ const attack=Math.min(96,Math.max(16,Math.floor(target*.01)));
+ const release=Math.min(Math.floor(target*.18),Math.max(128,Math.floor(target*.08)));
+ const loopStart=sl.start+Math.floor(sl.length*.35);
+ const loopLength=Math.max(2,sl.end-loopStart);
+ let phase=0;
+ for(let i=0;i<target&&dest+i<out.length;i++){
+   const progress=i/Math.max(1,target-1);
+   const semitone=Math.max(0,5-Math.floor(progress*6));
+   const ratio=Math.pow(2,semitone/12);
+   let srcPos;
+   if(phase<sl.length-1)srcPos=sl.start+phase;
+   else srcPos=loopStart+((phase-(sl.length-1))%loopLength);
+   const p0=Math.floor(srcPos),p1=Math.min(src.length-1,p0+1),frac=srcPos-p0;
    const sample=src[p0]*(1-frac)+src[p1]*frac;
    let env=1;
    if(i<attack)env=i/attack;
