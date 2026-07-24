@@ -113,6 +113,12 @@ function buildSoundLogoTrack(total,sr,bpm){
   return out;
 }
 function clearURLs(){while(objectURLs.length)URL.revokeObjectURL(objectURLs.pop())}
+// iPhone Safariでは同じ動画をもう一度選ぶと change が発火しないことがある。
+// ファイル選択画面を開く直前に値を空にして、毎回必ず読み込み処理を開始させる。
+sourceInput.addEventListener("click",()=>{
+  sourceInput.value="";
+});
+
 sourceInput.addEventListener("change",async()=>{
   stopMixer(true);
   clearURLs();
