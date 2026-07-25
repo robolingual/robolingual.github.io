@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#d6d6d6">
-<title>Robolingual v0.9.13</title>
+<title>Robolingual v0.9.15</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:Geneva,Chicago,"Helvetica Neue",Arial,sans-serif;padding:18px}
@@ -12,22 +12,24 @@
 .titlebar{height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:2px solid var(--ink);background:repeating-linear-gradient(to bottom,#fff 0,#fff 2px,#aaa 2px,#aaa 4px);font-weight:700}.closebox{width:18px;height:18px;border:2px solid var(--ink);background:#ddd;flex:0 0 auto}.title{background:var(--panel);padding:2px 10px;margin:auto;transform:translateX(-13px)}
 main{padding:18px}.row{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;margin-bottom:12px}label{font-weight:700}.filebox{display:flex;gap:10px;align-items:center;min-width:0}
 button,.file-button,input,select{font:inherit}button,.file-button,select{appearance:none;border:2px solid var(--ink);background:#e9e9e9;color:var(--ink);box-shadow:2px 2px 0 #777;padding:10px 14px;cursor:pointer;font-weight:700;border-radius:0}button:active,.file-button:active{box-shadow:none;transform:translate(2px,2px)}button:disabled{color:#777;cursor:not-allowed}input[type=file]{display:none}#filename{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
-#wave{width:100%;height:180px;border:2px solid var(--ink);background:#fff;display:block}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#bpm,#bars{width:92px;border:2px solid var(--ink);background:#fff;padding:9px;border-radius:0;font-weight:700}
-#translate{width:100%;font-size:20px;padding:15px;background:var(--ink);color:#fff;box-shadow:4px 4px 0 #777;margin:4px 0 14px}#status{min-height:22px;margin:0 0 16px;font-size:14px;font-weight:700}.mode{border-top:2px solid var(--ink);padding:14px 0}.mode-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.mode h2{margin:0;font-size:18px}.switches{display:flex;gap:8px;align-items:center}.switches input{position:absolute;opacity:0;pointer-events:none}.switches label{display:inline-flex;align-items:center;justify-content:center;min-width:58px;border:2px solid var(--ink);background:#e9e9e9;box-shadow:2px 2px 0 #777;padding:8px 10px;cursor:pointer}.switches input:checked+label{background:var(--ink);color:#fff;box-shadow:none;transform:translate(2px,2px)}.downloads{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.download{width:100%;padding:8px}.mixer-layout{display:grid;grid-template-columns:minmax(0,1fr) 108px;gap:18px;align-items:stretch}.mixer-main{min-width:0}.speed-panel{border:2px solid var(--ink);background:#ddd;display:flex;flex-direction:column;align-items:center;padding:10px 8px;min-height:340px}.speed-title{font-size:12px;font-weight:900;letter-spacing:.04em;text-align:center}.speed-value{font-family:monospace;font-size:18px;font-weight:900;margin:5px 0 7px}.speed-scale{flex:1;display:grid;grid-template-columns:36px 32px;align-items:stretch;justify-content:center;gap:4px;min-height:250px}.speed-labels{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;font-family:monospace;font-size:11px;font-weight:700;padding:4px 0}.speed-slider{width:32px;height:100%;writing-mode:vertical-lr;direction:rtl;accent-color:#111;cursor:ns-resize}.speed-reset{width:100%;padding:7px 3px;margin-top:8px;font-size:11px}.transport{display:flex;justify-content:flex-end;margin:0 0 10px}.stop{min-width:100px}.hidden{display:none}@media(max-width:620px){.mixer-layout{grid-template-columns:minmax(0,1fr) 82px;gap:10px}.speed-panel{padding:8px 5px}.switches{gap:4px}.switches label{min-width:46px;padding:7px 6px}}
+#waveBox{position:relative;width:100%}#wave{width:100%;height:180px;border:2px solid var(--ink);background:#080008;display:block}#videoReadButton{position:absolute;left:50%;top:76%;transform:translate(-50%,-50%);z-index:3;margin:0;padding:12px 18px;background:#111;color:#ff2aa8;border-color:#ff2aa8;box-shadow:3px 3px 0 #7a1457;white-space:nowrap}#videoReadButton:active{transform:translate(calc(-50% + 2px),calc(-50% + 2px));box-shadow:none}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}#bpm,#bars{width:92px;border:2px solid var(--ink);background:#fff;padding:9px;border-radius:0;font-weight:700}
+#translate{width:100%;font-size:20px;padding:15px;background:var(--ink);color:#fff;box-shadow:4px 4px 0 #777;margin:4px 0 14px}#status{min-height:22px;margin:0 0 16px;font-size:14px;font-weight:700}.mode{border-top:2px solid var(--ink);padding:14px 0}.mode-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.mode h2{margin:0;font-size:18px}.switches{display:flex;gap:8px;align-items:center}.switches input{position:absolute;opacity:0;pointer-events:none}.switches label{display:inline-flex;align-items:center;justify-content:center;min-width:58px;border:2px solid var(--ink);background:#e9e9e9;box-shadow:2px 2px 0 #777;padding:8px 10px;cursor:pointer}.switches input:checked+label{background:var(--ink);color:#fff;box-shadow:none;transform:translate(2px,2px)}.downloads{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.download{width:100%;padding:8px}.mixer-layout{display:grid;grid-template-columns:minmax(0,1fr) 108px;gap:18px;align-items:stretch}.mixer-main{min-width:0}.speed-panel{border:2px solid var(--ink);background:#ddd;display:flex;flex-direction:column;align-items:center;padding:10px 8px;min-height:340px}.speed-title{font-size:12px;font-weight:900;letter-spacing:.04em;text-align:center}.speed-value{font-family:monospace;font-size:18px;font-weight:900;margin:5px 0 7px}.speed-scale{flex:1;display:grid;grid-template-columns:36px 32px;align-items:stretch;justify-content:center;gap:4px;min-height:250px}.speed-labels{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;font-family:monospace;font-size:11px;font-weight:700;padding:4px 0}.speed-slider{width:32px;height:100%;writing-mode:vertical-lr;direction:rtl;accent-color:#111;cursor:ns-resize}.speed-reset{width:100%;padding:7px 3px;margin-top:8px;font-size:11px}.transport{display:flex;justify-content:flex-end;margin:0 0 10px}.stop{min-width:100px}.hidden{display:none}
+#waveBox{overflow:hidden}#waveStatus{position:absolute;left:12px;right:12px;bottom:10px;z-index:4;color:#ff7ac4;font-family:monospace;font-size:13px;font-weight:900;text-align:center;text-shadow:0 1px 0 #000;pointer-events:none}.wave-video-preview{position:absolute!important;left:50%;top:46%;transform:translate(-50%,-50%);z-index:2;margin:0!important;width:min(220px,55%)!important;height:min(124px,68%)!important;border:1px solid #ff2aa8;box-shadow:0 0 0 2px #080008;object-fit:contain}.performance-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 14px}.performance-controls button{padding:9px 8px;min-width:0}.play-led{background:#0b3517;color:#c9ffd5;border-color:#09260f;transition:background-color .25s,color .25s,box-shadow .25s}.play-led.lit{background:#20d45a;color:#001b08;box-shadow:0 0 10px rgba(32,212,90,.9),2px 2px 0 #08752c}.rec-led{background:#4a0b0b;color:#ffd0d0;border-color:#2b0505;transition:background-color .25s,color .25s,box-shadow .25s}.rec-led.lit{background:#ff2525;color:#240000;box-shadow:0 0 10px rgba(255,37,37,.9),2px 2px 0 #9c0000}.performance-controls button:disabled{opacity:.45}.zip-row{margin-top:12px}.zip-row button{width:100%;background:#111;color:#fff}.downloads{display:none!important}@media(max-width:620px){.mixer-layout{grid-template-columns:minmax(0,1fr) 82px;gap:10px}.speed-panel{padding:8px 5px}.switches{gap:4px}.switches label{min-width:46px;padding:7px 6px}}
 @media(max-width:600px){body{padding:10px}main{padding:12px}.row{grid-template-columns:1fr;gap:6px}.outputs{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.13</div></div><main>
-<div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose Audio / Video</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.15</div></div><main>
+<div class="row"><label>Source</label><div class="filebox"><label class="file-button" for="source">Choose</label><input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt"><span id="filename">No source</span></div></div>
 
-<div class="row"><label>Waveform</label><div><canvas id="wave"></canvas></div></div>
-<div class="row"><label>Timing</label><div class="controls"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><span>BPM</span><input id="bars" type="number" min="4" max="4" step="1" value="4" disabled><span>bars</span></div></div>
-<button id="translate" disabled>Translate</button><div id="status"></div>
+<div class="row"><label>Waveform</label><div><div id="waveBox"><canvas id="wave"></canvas><div id="waveStatus">Waiting for file...</div></div>
+<div class="performance-controls" aria-label="Recorded performance controls"><button id="performancePlay" class="play-led" type="button" disabled>▶ PLAY</button><button id="performanceStop" type="button">■ STOP</button><button id="performanceRec" class="rec-led" type="button" disabled>● REC</button><button id="performanceSave" type="button" disabled>SAVE</button></div></div></div>
+<div class="row"><label>BPM</label><div class="controls"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><input id="bars" type="hidden" value="4"></div></div>
+<button id="translate" disabled>Translate</button>
 <section id="results" class="hidden">
 <div class="mixer-layout">
 <div class="mixer-main">
-<div class="transport"><button id="stopAll" class="stop" type="button">STOP</button></div>
+
 <div class="mode" data-mode="normal">
   <div class="mode-head"><h2>Normal</h2><div class="switches">
     <input id="normalOff" type="radio" name="normal" value="off" checked><label for="normalOff">OFF</label>
@@ -52,6 +54,7 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
   </div></div>
   <div class="downloads" id="hyperDownloads"></div>
 </div>
+<div class="zip-row"><button id="downloadAll" type="button" disabled>Download All ZIP</button></div>
 </div>
 <aside class="speed-panel" aria-label="Master speed">
   <div class="speed-title">MASTER<br>SPEED</div>
@@ -67,12 +70,15 @@ button,.file-button,input,select{font:inherit}button,.file-button,select{appeara
 </main></div>
 <script>
 (()=>{"use strict";
-const sourceInput=document.getElementById("source"),filename=document.getElementById("filename"),wave=document.getElementById("wave"),bpmInput=document.getElementById("bpm"),barsInput=document.getElementById("bars"),translateButton=document.getElementById("translate"),status=document.getElementById("status"),results=document.getElementById("results");
+const sourceInput=document.getElementById("source"),filename=document.getElementById("filename"),wave=document.getElementById("wave"),waveBox=document.getElementById("waveBox"),bpmInput=document.getElementById("bpm"),barsInput=document.getElementById("bars"),translateButton=document.getElementById("translate"),status=document.getElementById("waveStatus"),results=document.getElementById("results"),performancePlay=document.getElementById("performancePlay"),performanceStop=document.getElementById("performanceStop"),performanceRec=document.getElementById("performanceRec"),performanceSave=document.getElementById("performanceSave"),downloadAll=document.getElementById("downloadAll");
 let sourceBuffer=null,audioContext=null,mono=null,attacks=[],soundLogoBuffer=null,renderedSoundLogo=null;
 const objectURLs=[];
 const rendered={normal:{a:null,b:null},abnormal:{a:null,b:null},hyper:{a:null,b:null}};
-let mixerSources=[],mixerGains={},mixerRunning=false;
+let mixerSources=[],mixerGains={},mixerRunning=false,mixerMaster=null;
 let masterRate=1;
+let performanceRecording=false,recordProcessor=null,recordSilentGain=null,recordChunks=[],recordedBuffer=null,recordedBlob=null;
+let performanceSource=null,performanceStartedAt=0,performanceOffset=0,performanceRAF=0;
+const renderedBlobs={normal:{a:null,b:null},abnormal:{a:null,b:null},hyper:{a:null,b:null}};
 const setStatus=t=>status.textContent=t;
 const SOUND_LOGO_DATA="data:audio/mpeg;base64,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//////////////6tLS5dq1qam//ZW0KAAAAD8pcH/////////////6Lzf//v/////+1jN/+n/9kdxQPh//ukZPiABFAxTn114AocgAkEoAAAJJnPSfncEIC1MeNXAlAA0NG//ypZQGVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sUZNoP8AAAaQcAAAgAAA0g4AABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
 function getAudioContext(){if(!audioContext)audioContext=new(window.AudioContext||window.webkitAudioContext)();return audioContext}
@@ -83,6 +89,20 @@ async function loadSoundLogo(){
   const data=await response.arrayBuffer();
   soundLogoBuffer=await ctx.decodeAudioData(data.slice(0));
   return soundLogoBuffer;
+}
+async function playSoundLogoOneShot(){
+  try{
+    const ctx=getAudioContext();
+    if(ctx.state==="suspended")await ctx.resume();
+    const buffer=await loadSoundLogo();
+    const source=ctx.createBufferSource();
+    const gain=ctx.createGain();
+    gain.gain.value=.9;
+    source.buffer=buffer;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start();
+  }catch(error){console.warn("Sound logo playback failed",error)}
 }
 function buildSoundLogoTrack(total,sr,bpm){
   if(!soundLogoBuffer)return null;
@@ -120,11 +140,13 @@ sourceInput.addEventListener("click",()=>{
 });
 
 sourceInput.addEventListener("change",async()=>{
+  if(performanceRecording)stopPerformanceRecording();
+  stopRecordedPlayback(false);
   stopMixer(true);
   clearURLs();
   results.classList.add("hidden");
   translateButton.disabled=true;
-  sourceBuffer=null;mono=null;attacks=[];
+  sourceBuffer=null;mono=null;attacks=[];recordedBuffer=null;recordedBlob=null;performancePlay.disabled=true;performanceRec.disabled=true;performanceSave.disabled=true;downloadAll.disabled=true;
 
   const file=sourceInput.files&&sourceInput.files[0];
   if(!file){filename.textContent="No source";drawEmptyWave();return}
@@ -221,8 +243,8 @@ async function extractVideoAudioByPlayback(ctx,file){
   video.disablePictureInPicture=true;
   // iOS Safariは画面外・極小・完全透明なvideoの読み込みを止めることがある。
   // そのため読み込み中だけ、実体のある小さなプレビューとして置く。
-  video.style.cssText="display:block;width:160px;max-width:100%;height:90px;margin:8px 0;background:#000;object-fit:contain";
-  status.insertAdjacentElement("afterend",video);
+  video.className="wave-video-preview";
+  waveBox.appendChild(video);
 
   let actionButton=null;
   const removeUI=()=>{
@@ -242,9 +264,9 @@ async function extractVideoAudioByPlayback(ctx,file){
   setStatus("Video selected — tap START VIDEO READ");
   actionButton=document.createElement("button");
   actionButton.type="button";
+  actionButton.id="videoReadButton";
   actionButton.textContent="START VIDEO READ";
-  actionButton.style.cssText="display:block;width:100%;margin:8px 0 14px;padding:14px;background:#111;color:#fff";
-  video.insertAdjacentElement("afterend",actionButton);
+  waveBox.appendChild(actionButton);
   // Safariにボタンを先に描画させる。Web Audioの準備はその次に行う。
   await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
 
@@ -351,6 +373,7 @@ async function extractVideoAudioByPlayback(ctx,file){
 [bpmInput,barsInput].forEach(el=>el.addEventListener("input",()=>sourceBuffer&&drawWave()));
 translateButton.addEventListener("click",async()=>{
   if(!sourceBuffer||!mono)return;
+  playSoundLogoOneShot();
   const bpm=clamp(Number(bpmInput.value)||170,60,260),bars=4;
   bpmInput.value=String(Math.round(bpm));barsInput.value="4";
   translateButton.disabled=true;
@@ -380,10 +403,12 @@ translateButton.addEventListener("click",async()=>{
       softLimit(output,.96);
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
       const blob=encodeWav(output,sr);
-      addDownload(modeKey,mode,variant,blob);
+      renderedBlobs[modeKey][variantKey]=blob;
       await nextFrame();
     }
     results.classList.remove("hidden");
+    performanceRec.disabled=false;
+    downloadAll.disabled=false;
     resetSwitches();
     setStatus("Translated");
   }catch(e){
@@ -401,18 +426,42 @@ function toAudioBuffer(samples,sr){
   return buffer;
 }
 
-function addDownload(modeKey,mode,variant,blob){
-  const fileName=`robolingual-v099-${mode.toLowerCase()}-${variant===0?"a":"b"}.wav`;
-  const b=document.createElement("button");
-  b.className="download";
-  b.type="button";
-  b.textContent=variant===0?"Download A":"Download B";
-  b.addEventListener("click",()=>saveWavBlob(blob,fileName));
-  document.getElementById(`${modeKey}Downloads`).appendChild(b);
+function crc32(bytes){
+  let crc=-1;
+  for(let i=0;i<bytes.length;i++){
+    crc^=bytes[i];
+    for(let k=0;k<8;k++)crc=(crc>>>1)^((crc&1)?0xEDB88320:0);
+  }
+  return (crc^(-1))>>>0;
+}
+function u16(v){return new Uint8Array([v&255,(v>>>8)&255])}
+function u32(v){return new Uint8Array([v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255])}
+function concatBytes(parts){let n=0;for(const p of parts)n+=p.length;const out=new Uint8Array(n);let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out}
+async function makeStoredZip(entries){
+  const enc=new TextEncoder(),locals=[],centrals=[];let offset=0;
+  for(const entry of entries){
+    const name=enc.encode(entry.name),data=new Uint8Array(await entry.blob.arrayBuffer()),crc=crc32(data);
+    const local=concatBytes([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name,data]);
+    locals.push(local);
+    const central=concatBytes([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]);
+    centrals.push(central);offset+=local.length;
+  }
+  const centralBytes=concatBytes(centrals),localBytes=concatBytes(locals);
+  const end=concatBytes([u32(0x06054b50),u16(0),u16(0),u16(entries.length),u16(entries.length),u32(centralBytes.length),u32(localBytes.length),u16(0)]);
+  return new Blob([localBytes,centralBytes,end],{type:"application/zip"});
+}
+async function downloadAllZip(){
+  const names=[["normal","a","Normal_A.wav"],["normal","b","Normal_B.wav"],["abnormal","a","Abnormal_A.wav"],["abnormal","b","Abnormal_B.wav"],["hyper","a","Hyper_A.wav"],["hyper","b","Hyper_B.wav"]];
+  const entries=names.map(([m,v,name])=>({name,blob:renderedBlobs[m][v]})).filter(x=>x.blob);
+  if(entries.length!==6){setStatus("Translate first — six files are required");return}
+  downloadAll.disabled=true;setStatus("Building ZIP...");
+  try{const zip=await makeStoredZip(entries);await saveBlob(zip,"Robolingual_6_Patterns.zip");setStatus("ZIP ready")}
+  catch(error){console.error(error);setStatus("ZIP creation failed")}
+  finally{downloadAll.disabled=false}
 }
 
-async function saveWavBlob(blob,fileName){
-  const file=new File([blob],fileName,{type:"audio/wav"});
+async function saveBlob(blob,fileName){
+  const file=new File([blob],fileName,{type:blob.type||"application/octet-stream"});
   try{
     if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
       await navigator.share({files:[file],title:fileName});
@@ -440,6 +489,64 @@ function resetSwitches(){
   }
 }
 
+function getMixerMaster(){
+  const ctx=getAudioContext();
+  if(!mixerMaster){mixerMaster=ctx.createGain();mixerMaster.gain.value=1;mixerMaster.connect(ctx.destination)}
+  return mixerMaster;
+}
+function stopRecordedPlayback(keepWave=true,resetOffset=true){
+  if(performanceSource){try{performanceSource.onended=null;performanceSource.stop()}catch(_){}try{performanceSource.disconnect()}catch(_){}}
+  performanceSource=null;cancelAnimationFrame(performanceRAF);performanceRAF=0;performancePlay.classList.remove("lit");performancePlay.disabled=!recordedBuffer;
+  if(resetOffset)performanceOffset=0;
+  if(keepWave&&recordedBuffer)drawRecordedWave(performanceOffset/Math.max(.001,recordedBuffer.duration));
+}
+function updateRecordedPlayhead(){
+  if(!performanceSource||!recordedBuffer)return;
+  const elapsed=getAudioContext().currentTime-performanceStartedAt;
+  const position=Math.min(recordedBuffer.duration,performanceOffset+elapsed);
+  drawRecordedWave(position/recordedBuffer.duration);
+  if(position<recordedBuffer.duration)performanceRAF=requestAnimationFrame(updateRecordedPlayhead);
+}
+async function playRecordedPerformance(){
+  if(!recordedBuffer||performanceRecording)return;
+  stopMixer(true);stopRecordedPlayback(false,false);
+  const ctx=getAudioContext();if(ctx.state==="suspended")await ctx.resume();
+  const source=ctx.createBufferSource();source.buffer=recordedBuffer;source.playbackRate.value=1;source.connect(ctx.destination);
+  performanceSource=source;performanceStartedAt=ctx.currentTime;performancePlay.classList.add("lit");performancePlay.disabled=false;performanceRec.disabled=true;
+  source.onended=()=>{performanceSource=null;performancePlay.classList.remove("lit");performanceRec.disabled=false;performanceOffset=0;drawRecordedWave(1)};
+  source.start(0,performanceOffset);updateRecordedPlayhead();setStatus("Playing recorded performance");
+}
+async function startPerformanceRecording(){
+  if(performanceRecording||performanceSource)return;
+  const ctx=getAudioContext();if(ctx.state==="suspended")await ctx.resume();
+  stopRecordedPlayback(false);recordChunks=[];
+  const master=getMixerMaster();recordProcessor=ctx.createScriptProcessor(4096,1,1);recordSilentGain=ctx.createGain();recordSilentGain.gain.value=.00001;
+  master.connect(recordProcessor);recordProcessor.connect(recordSilentGain);recordSilentGain.connect(ctx.destination);
+  recordProcessor.onaudioprocess=e=>{if(!performanceRecording)return;recordChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)))};
+  performanceRecording=true;performanceRec.classList.add("lit");performanceRec.disabled=false;performancePlay.disabled=true;performanceSave.disabled=true;
+  setStatus("Recording performance...");
+}
+function stopPerformanceRecording(){
+  if(!performanceRecording)return;
+  performanceRecording=false;performanceRec.classList.remove("lit");
+  if(recordProcessor){recordProcessor.onaudioprocess=null;try{getMixerMaster().disconnect(recordProcessor)}catch(_){}try{recordProcessor.disconnect()}catch(_){}}
+  if(recordSilentGain){try{recordSilentGain.disconnect()}catch(_){}}
+  recordProcessor=null;recordSilentGain=null;
+  const total=recordChunks.reduce((n,c)=>n+c.length,0),samples=new Float32Array(total);let o=0;for(const c of recordChunks){samples.set(c,o);o+=c.length}
+  if(total){softLimit(samples,.96);const ctx=getAudioContext();recordedBuffer=toAudioBuffer(samples,ctx.sampleRate);recordedBlob=encodeWav(samples,ctx.sampleRate);performancePlay.disabled=false;performanceSave.disabled=false;drawRecordedWave(0);setStatus(`Recorded — ${recordedBuffer.duration.toFixed(1)} sec`)}
+  else setStatus("Nothing was recorded");
+}
+function drawRecordedWave(progress=0){
+  if(!recordedBuffer)return;
+  const ctx=resizeCanvas(wave),width=wave.width,height=wave.height,data=recordedBuffer.getChannelData(0),step=Math.max(1,Math.floor(data.length/width));drawPinkGrid(ctx,width,height);
+  let peak=0;for(let i=0;i<data.length;i+=Math.max(1,Math.floor(data.length/12000)))peak=Math.max(peak,Math.abs(data[i]));const gain=peak>1e-6?Math.min(20,.9/peak):1;
+  ctx.strokeStyle="#ff2aa8";ctx.lineWidth=Math.max(1.4,(devicePixelRatio||1)*1.25);ctx.beginPath();for(let x=0;x<width;x++){let min=1,max=-1;for(let i=x*step;i<Math.min(data.length,(x+1)*step);i++){const v=Math.max(-1,Math.min(1,data[i]*gain));min=Math.min(min,v);max=Math.max(max,v)}ctx.moveTo(x,(1+min)*.5*height);ctx.lineTo(x,(1+max)*.5*height)}ctx.stroke();
+  if(progress>0){const x=Math.max(0,Math.min(width,width*progress));ctx.strokeStyle="#fff";ctx.lineWidth=Math.max(2,devicePixelRatio||1);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}
+}
+function seekRecordedFromPointer(event){
+  if(!recordedBuffer)return;const rect=wave.getBoundingClientRect(),x=Math.max(0,Math.min(rect.width,event.clientX-rect.left));performanceOffset=(x/rect.width)*recordedBuffer.duration;
+  const wasPlaying=!!performanceSource;if(wasPlaying){stopRecordedPlayback(false,false);playRecordedPerformance()}else drawRecordedWave(performanceOffset/recordedBuffer.duration);
+}
 async function startMixer(){
   if(mixerRunning)return;
   const ctx=getAudioContext();
@@ -459,7 +566,7 @@ async function startMixer(){
       source.loopEnd=buffer.duration;
       source.playbackRate.setValueAtTime(masterRate,when);
       gain.gain.setValueAtTime(0,when);
-      source.connect(gain).connect(ctx.destination);
+      source.connect(gain).connect(getMixerMaster());
       source.start(when);
       mixerSources.push(source);
       mixerGains[`${mode}-${variant}`]=gain;
@@ -474,7 +581,7 @@ async function startMixer(){
     logoSource.loopEnd=renderedSoundLogo.duration;
     logoSource.playbackRate.setValueAtTime(masterRate,when);
     logoGain.gain.setValueAtTime(1,when);
-    logoSource.connect(logoGain).connect(ctx.destination);
+    logoSource.connect(logoGain).connect(getMixerMaster());
     logoSource.start(when);
     mixerSources.push(logoSource);
     mixerGains.soundLogo=logoGain;
@@ -554,7 +661,12 @@ function stopMixer(reset=false){
 }
 
 document.querySelectorAll('.switches input[type="radio"]').forEach(el=>el.addEventListener("change",updateMixer));
-document.getElementById("stopAll").addEventListener("click",()=>stopMixer(true));
+performancePlay.addEventListener("click",playRecordedPerformance);
+performanceRec.addEventListener("click",startPerformanceRecording);
+performanceStop.addEventListener("click",()=>{if(performanceRecording)stopPerformanceRecording();else if(performanceSource)stopRecordedPlayback(true);else stopMixer(true)});
+performanceSave.addEventListener("click",()=>recordedBlob&&saveBlob(recordedBlob,"Robolingual_Performance.wav"));
+downloadAll.addEventListener("click",downloadAllZip);
+wave.addEventListener("pointerdown",seekRecordedFromPointer);
 speedSlider.addEventListener("input",()=>setMasterRate(sliderToRate(speedSlider.value)));
 speedSlider.addEventListener("dblclick",resetMasterRate);
 speedReset.addEventListener("click",resetMasterRate);
@@ -720,11 +832,23 @@ function softLimit(data,target){let peak=0;for(let i=0;i<data.length;i++){data[i
 function toMono(buffer){const m=new Float32Array(buffer.length);for(let ch=0;ch<buffer.numberOfChannels;ch++){const d=buffer.getChannelData(ch);for(let i=0;i<buffer.length;i++)m[i]+=d[i]/buffer.numberOfChannels}return m}
 function encodeWav(samples,sr){const buffer=new ArrayBuffer(44+samples.length*2),view=new DataView(buffer);writeString(view,0,"RIFF");view.setUint32(4,36+samples.length*2,true);writeString(view,8,"WAVE");writeString(view,12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);writeString(view,36,"data");view.setUint32(40,samples.length*2,true);let o=44;for(let i=0;i<samples.length;i++,o+=2){const s=Math.max(-1,Math.min(1,samples[i]));view.setInt16(o,s<0?s*32768:s*32767,true)}return new Blob([view],{type:"audio/wav"})}
 function writeString(view,o,t){for(let i=0;i<t.length;i++)view.setUint8(o+i,t.charCodeAt(i))}
-function drawEmptyWave(){const ctx=resizeCanvas(wave);ctx.fillStyle="#fff";ctx.fillRect(0,0,wave.width,wave.height)}
-function drawWave(){const ctx=resizeCanvas(wave),width=wave.width,height=wave.height,data=mono,step=Math.max(1,Math.floor(data.length/width));ctx.fillStyle="#fff";ctx.fillRect(0,0,width,height);/* Safari経由の動画抽出は振幅が小さく見える場合があるため、表示だけ自動拡大する。音声データ自体は変更しない。 */let displayPeak=0;const sampleStep=Math.max(1,Math.floor(data.length/12000));for(let i=0;i<data.length;i+=sampleStep)displayPeak=Math.max(displayPeak,Math.abs(data[i]));const displayGain=displayPeak>1e-6?Math.min(24,.9/displayPeak):1;ctx.strokeStyle="#111";ctx.lineWidth=Math.max(1,devicePixelRatio||1);ctx.beginPath();for(let x=0;x<width;x++){let min=1,max=-1,start=x*step,end=Math.min(data.length,start+step);for(let i=start;i<end;i++){const v=Math.max(-1,Math.min(1,data[i]*displayGain));if(v<min)min=v;if(v>max)max=v}ctx.moveTo(x,(1+min)*.5*height);ctx.lineTo(x,(1+max)*.5*height)}ctx.stroke();ctx.strokeStyle="#c40000";ctx.lineWidth=1;for(const a of attacks){const x=a/data.length*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}const bpm=clamp(Number(bpmInput.value)||170,60,260),beatSec=60/bpm,dur=data.length/sourceBuffer.sampleRate;ctx.strokeStyle="#0057b8";for(let t=0;t<dur;t+=beatSec){const x=t/dur*width;ctx.beginPath();ctx.moveTo(x,height-18);ctx.lineTo(x,height);ctx.stroke()}}
+function drawPinkGrid(ctx,width,height){
+  ctx.fillStyle="#080008";ctx.fillRect(0,0,width,height);
+  const ratio=devicePixelRatio||1;
+  ctx.strokeStyle="rgba(255,42,168,.30)";ctx.lineWidth=Math.max(1,ratio*.65);
+  const xStep=width/16,yStep=height/8;
+  ctx.beginPath();
+  for(let x=0;x<=width+.5;x+=xStep){ctx.moveTo(Math.round(x)+.5,0);ctx.lineTo(Math.round(x)+.5,height)}
+  for(let y=0;y<=height+.5;y+=yStep){ctx.moveTo(0,Math.round(y)+.5);ctx.lineTo(width,Math.round(y)+.5)}
+  ctx.stroke();
+  ctx.strokeStyle="rgba(255,42,168,.58)";ctx.lineWidth=Math.max(1,ratio);
+  ctx.beginPath();ctx.moveTo(0,height/2+.5);ctx.lineTo(width,height/2+.5);ctx.stroke();
+}
+function drawEmptyWave(){const ctx=resizeCanvas(wave);drawPinkGrid(ctx,wave.width,wave.height)}
+function drawWave(){const ctx=resizeCanvas(wave),width=wave.width,height=wave.height,data=mono,step=Math.max(1,Math.floor(data.length/width));drawPinkGrid(ctx,width,height);/* Safari経由の動画抽出は振幅が小さく見える場合があるため、表示だけ自動拡大する。音声データ自体は変更しない。 */let displayPeak=0;const sampleStep=Math.max(1,Math.floor(data.length/12000));for(let i=0;i<data.length;i+=sampleStep)displayPeak=Math.max(displayPeak,Math.abs(data[i]));const displayGain=displayPeak>1e-6?Math.min(24,.9/displayPeak):1;ctx.strokeStyle="#ff2aa8";ctx.lineWidth=Math.max(1.4,(devicePixelRatio||1)*1.25);ctx.beginPath();for(let x=0;x<width;x++){let min=1,max=-1,start=x*step,end=Math.min(data.length,start+step);for(let i=start;i<end;i++){const v=Math.max(-1,Math.min(1,data[i]*displayGain));if(v<min)min=v;if(v>max)max=v}ctx.moveTo(x,(1+min)*.5*height);ctx.lineTo(x,(1+max)*.5*height)}ctx.stroke();ctx.strokeStyle="rgba(255,42,168,.42)";ctx.lineWidth=Math.max(1,devicePixelRatio||1);for(const a of attacks){const x=a/data.length*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}const bpm=clamp(Number(bpmInput.value)||170,60,260),beatSec=60/bpm,dur=data.length/sourceBuffer.sampleRate;ctx.strokeStyle="rgba(255,42,168,.72)";for(let t=0;t<dur;t+=beatSec){const x=t/dur*width;ctx.beginPath();ctx.moveTo(x,height-18);ctx.lineTo(x,height);ctx.stroke()}}
 function resizeCanvas(canvas){const r=canvas.getBoundingClientRect(),ratio=devicePixelRatio||1;canvas.width=Math.max(1,Math.floor(r.width*ratio));canvas.height=Math.max(1,Math.floor(r.height*ratio));return canvas.getContext("2d")}
 const nextFrame=()=>new Promise(r=>requestAnimationFrame(r));const pick=(a,r)=>a[Math.floor(r()*a.length)];const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));function cryptoSeed(){if(window.crypto&&crypto.getRandomValues){const v=new Uint32Array(1);crypto.getRandomValues(v);return v[0]}return(Date.now()^Math.floor(Math.random()*4294967295))>>>0}function mulberry32(seed){return function(){let t=seed+=1831565813;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
-window.addEventListener("resize",()=>sourceBuffer?drawWave():drawEmptyWave());drawEmptyWave();
+window.addEventListener("resize",()=>recordedBuffer?drawRecordedWave(performanceOffset/Math.max(.001,recordedBuffer.duration)):sourceBuffer?drawWave():drawEmptyWave());drawEmptyWave();
 })();
 </script>
 </body></html>
