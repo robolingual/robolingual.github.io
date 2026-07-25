@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.23</title>
+<title>Robolingual v0.9.25</title>
 <style>
 :root{--bg:#d6d6d6;--panel:#ececec;--shadow:#8b8b8b;--ink:#111;--accent:#c40000}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family: "Segoe UI", Tahoma, Arial, sans-serif;padding:18px}
@@ -114,7 +114,7 @@ button,.file-button,label,.mode h2,.switches label,.speed-title,.speed-value,.sp
 </style>
 </head>
 <body>
-<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.23</div></div><main>
+<div class="window"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL v0.9.27</div></div><main>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 <div class="row waveform-row"><div><div id="waveBox"><canvas id="wave"></canvas><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
 <div class="performance-controls" aria-label="Recorded performance controls"><button id="performancePlay" class="play-led" type="button" disabled>▶ PLAY</button><button id="performanceStop" type="button">■ STOP</button><button id="performanceRec" class="rec-led" type="button" disabled>● REC</button><button id="performanceSave" type="button" disabled>SAVE</button></div><div class="translate-bpm-row"><button id="translate" type="button" disabled>TRANSLATE</button><label class="bpm-panel" for="bpm"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><span>BPM</span></label><input id="bars" type="hidden" value="4"></div></div></div>
@@ -238,9 +238,18 @@ sourceInput.addEventListener("click",()=>{
 });
 
 
-window.addEventListener("focus",()=>{setTimeout(()=>{if(mainActionMode==="busy"&&!sourceBuffer)setMainAction("choose","CHOOSE SOURCE")},500)});
+window.addEventListener("focus",()=>{setTimeout(()=>{if(mainActionMode==="busy"&&sourceInput.files.length===0)setMainAction("choose","CHOOSE SOURCE")},500)});
 
 sourceInput.addEventListener("change",async()=>{
+  const file=sourceInput.files&&sourceInput.files[0];
+  // ピッカーをキャンセルしただけなら、現在の素材とTRANSLATEをそのまま維持する。
+  if(!file){
+    setMainAction("choose","CHOOSE SOURCE");
+    setStatus(sourceBuffer?"Ready — current source unchanged":"Waiting for file...");
+    return;
+  }
+
+  // 新しいファイルが実際に渡された時点で、旧素材の生成状態を無効化する。
   if(performanceRecording)stopPerformanceRecording();
   stopRecordedPlayback(false);
   stopMixer(true);
@@ -249,8 +258,6 @@ sourceInput.addEventListener("change",async()=>{
   setMainAction("busy","LOADING...",true);
   sourceBuffer=null;mono=null;attacks=[];recordedBuffer=null;recordedBlob=null;performancePlay.disabled=true;performanceRec.disabled=true;performanceSave.disabled=true;downloadAll.disabled=true;translateButton.disabled=true;
 
-  const file=sourceInput.files&&sourceInput.files[0];
-  if(!file){filename.textContent="NO SOURCE";drawEmptyWave();setMainAction("choose","CHOOSE SOURCE");return}
   // File オブジェクトを確保してから input を空にする。これで同じ動画も再選択できる。
   sourceInput.value="";
 
@@ -488,12 +495,12 @@ async function runTranslate(){
     renderedSoundLogo=buildSoundLogoTrack(total,sr,bpm);
     const variantPools=splitVariantSlices(makeSlices(mono,sr,attacks),mono,sr);
     const jobs=[
-      ["normal","a","NORMAL",0,makeNORMAL,variantPools.a],
-      ["normal","b","NORMAL",1,makeNORMAL,variantPools.b],
-      ["abnormal","a","ABNORMAL",0,makeABNORMAL,variantPools.a],
-      ["abnormal","b","ABNORMAL",1,makeABNORMAL,variantPools.b],
-      ["hyper","a","HYPER",0,makeHYPER,variantPools.a],
-      ["hyper","b","HYPER",1,makeHYPER,variantPools.b]
+      ["normal","a","NORMAL",0,makeNORMALA,variantPools.a],
+      ["normal","b","NORMAL",1,makeNORMALB,variantPools.b],
+      ["abnormal","a","ABNORMAL",0,makeABNORMALA,variantPools.a],
+      ["abnormal","b","ABNORMAL",1,makeABNORMALB,variantPools.b],
+      ["hyper","a","HYPER",0,makeHYPERA,variantPools.a],
+      ["hyper","b","HYPER",1,makeHYPERB,variantPools.b]
     ];
     normalDownloads.innerHTML="";
     abnormalDownloads.innerHTML="";
@@ -809,6 +816,20 @@ speedReset.addEventListener("click",resetMasterRate);
 function detectAttacks(src,sr){const hop=Math.max(64,Math.floor(sr*.005)),win=Math.max(hop*2,Math.floor(sr*.02)),env=[];for(let p=0;p<src.length;p+=hop){let sum=0,end=Math.min(src.length,p+win);for(let i=p;i<end;i++)sum+=src[i]*src[i];env.push(Math.sqrt(sum/Math.max(1,end-p)))}let max=0;for(const v of env)if(v>max)max=v;const floor=max*.035,minGap=Math.floor(.065*sr/hop);const out=[];let last=-minGap;for(let i=2;i<env.length-2;i++){const rise=env[i]-Math.min(env[i-2],env[i-1]),local=env[i]>=env[i-1]&&env[i]>=env[i+1];if(env[i]>floor&&rise>max*.018&&local&&i-last>=minGap){let sample=i*hop;const search=Math.min(src.length,sample+Math.floor(sr*.018));while(sample<search&&Math.abs(src[sample])<maxAbs(src,sample,search)*.12)sample++;out.push(sample);last=i}}if(!out.length)out.push(0);return out}
 function maxAbs(src,a,b){let m=0;for(let i=a;i<b;i++)m=Math.max(m,Math.abs(src[i]));return m}
 function makeSlices(src,sr,attackList){const list=[];for(let i=0;i<attackList.length;i++){const start=attackList[i],next=i+1<attackList.length?attackList[i+1]:src.length;let end=Math.min(src.length,Math.max(start+Math.floor(sr*.09),next));const maxLen=Math.floor(sr*1.8);end=Math.min(end,start+maxLen);if(end-start>=Math.floor(sr*.045))list.push({start,end,length:end-start})}return list.length?list:[{start:0,end:Math.min(src.length,Math.floor(sr*.5)),length:Math.min(src.length,Math.floor(sr*.5))}]}
+function sliceTextureScore(sl,src,sr){
+  const start=sl.start,end=sl.end,len=Math.max(1,end-start);
+  const earlyEnd=Math.min(end,start+Math.floor(sr*.035));
+  const bodyStart=Math.min(end,start+Math.floor(sr*.055));
+  const bodyEnd=Math.min(end,start+Math.floor(sr*.18));
+  let earlySq=0,earlyN=0,bodySq=0,bodyN=0,zcr=0,prev=src[start]||0,peak=0;
+  for(let i=start;i<earlyEnd;i++){const v=src[i];earlySq+=v*v;earlyN++;peak=Math.max(peak,Math.abs(v));if((v>=0)!=(prev>=0))zcr++;prev=v}
+  for(let i=bodyStart;i<bodyEnd;i++){const v=src[i];bodySq+=v*v;bodyN++;if((v>=0)!=(prev>=0))zcr++;prev=v}
+  const early=Math.sqrt(earlySq/Math.max(1,earlyN));
+  const body=Math.sqrt(bodySq/Math.max(1,bodyN));
+  const transient=early/(body+.00001);
+  const zcrRate=zcr/Math.max(1,(earlyEnd-start)+(bodyEnd-bodyStart));
+  return transient*1.6+zcrRate*12+peak*.35;
+}
 function splitVariantSlices(slices,src,sr){
   let unique=[];
   const seen=new Set();
@@ -824,84 +845,155 @@ function splitVariantSlices(slices,src,sr){
       {start:Math.min(src.length-1,mid),end:src.length,length:Math.max(1,src.length-Math.min(src.length-1,mid))}
     ].filter(sl=>sl.length>=minLen);
   }
-  const a=[],b=[];
-  for(let i=0;i<unique.length;i++)(i%2===0?a:b).push(unique[i]);
-  if(!a.length&&b.length)a.push(b.shift());
+  const ranked=unique.map(sl=>({sl,score:sliceTextureScore(sl,src,sr)})).sort((x,y)=>y.score-x.score);
+  const split=Math.max(1,Math.ceil(ranked.length*.40));
+  const a=ranked.slice(0,split).map(x=>x.sl);   // strongest transients / hardest consonant-like slices
+  const b=ranked.slice(split).sort((x,y)=>(y.sl.length-x.sl.length)||(x.score-y.score)).map(x=>x.sl); // longer, smoother slices first
   if(!b.length&&a.length>1)b.push(a.pop());
+  if(!a.length&&b.length)a.push(b.shift());
   return {a,b};
 }
 function grooveCell(rng,normalMode){if(normalMode)return pick([[0],[0,.5],[0,.75],[0,.5,.75]],rng);return pick([[0],[0,.5],[0,.25,.5,.75],[0,.25,.5,.75,.875]],rng)}
 function renderBeatCell(out,src,beatStart,beatLength,cell,sl,sr,gain,rng,natural){for(let i=0;i<cell.length;i++){const pos=cell[i],next=i+1<cell.length?cell[i+1]:1,dest=beatStart+Math.floor(pos*beatLength),space=Math.max(1,Math.floor((next-pos)*beatLength)),len=natural?Math.min(Math.floor(space*.92),Math.max(Math.floor(sr*.06),sl.length)):Math.max(Math.floor(sr*.025),Math.min(sl.length,Math.floor(space*(.58+rng()*.24))));if(natural)renderNatural(out,src,dest,sl,len,gain,rng);else renderOneShot(out,src,dest,sl.start,len,gain)}}
-function makeNORMAL(src,sr,bpm,bars,total,attackList,rng,slicePool){
+function renderLongPhrase(out,src,dest,start,target,gain){
+  const available=Math.max(0,Math.min(target,src.length-start,out.length-dest));
+  if(available<=0)return;
+  const attack=Math.min(96,Math.max(16,Math.floor(available*.008)));
+  const release=Math.min(Math.floor(available*.14),Math.max(128,Math.floor(available*.06)));
+  for(let i=0;i<available;i++){
+    let env=1;
+    if(i<attack)env=i/attack;
+    if(i>available-release)env=Math.min(env,Math.max(0,(available-i)/release));
+    out[dest+i]+=src[start+i]*gain*env;
+  }
+}
+function makeNORMALA(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
- let sharedAnchor=null;
  for(let b=0;b<bars;b++){
-   const base=Math.floor(b*bar);
-   if(b%2===0||!sharedAnchor)sharedAnchor=grooveCell(rng,true);
-   const beat2=grooveCell(rng,true),beat4=grooveCell(rng,true),cells=[sharedAnchor,beat2,sharedAnchor,beat4];
-
+   const base=Math.floor(b*bar),barEnd=Math.min(total,base+Math.floor(bar));
+   // NORMAL A: 伸ばし＋上下ピッチベンドを主役にする。各拍85%で発生。
    for(let q=0;q<4;q++){
-     const sl=pickWeightedSlice(slices,rng,true);
-     renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],sl,sr,.72+rng()*.12,rng,true);
-   }
-
-   if(rng()<.72){
-     const startBeat=rng()<.58?1:3;
-     const dest=base+Math.floor(startBeat*beat);
-     const remainingBeats=Math.floor((total-dest)/beat);
-     const wantsReturn=rng()<.24&&remainingBeats>=2;
-     const maxSingle=wantsReturn?Math.min(3,Math.floor(remainingBeats/2)):Math.min(3,Math.max(1,remainingBeats));
-     const sustainBeats=1+Math.floor(rng()*Math.max(1,maxSingle));
-     const sl=pickWeightedSlice(slices,rng,true);
-     const target=Math.min(total-dest,Math.floor(beat*sustainBeats));
-     const gain=.64+rng()*.12;
-     renderPitchRise(out,src,dest,sl,target,gain);
-     if(wantsReturn&&dest+target*2<=total){
-       renderPitchFall(out,src,dest+target,sl,target,gain);
+     if(rng()<.85){
+       const dest=base+Math.floor(q*beat);
+       const remaining=Math.max(1,Math.floor((barEnd-dest)/beat));
+       const sustainBeats=Math.min(remaining,1+Math.floor(rng()*2));
+       const sl=pickWeightedSlice(slices,rng,true);
+       const target=Math.min(barEnd-dest,Math.floor(beat*sustainBeats));
+       const gain=.78+rng()*.12;
+       if(rng()<.5)renderPitchRise(out,src,dest,sl,target,gain);
+       else renderPitchFall(out,src,dest,sl,target,gain);
+     }
+     // ベンドとは別に、伸ばしも高確率で重ねる。
+     if(rng()<.68){
+       const dest=base+Math.floor(q*beat);
+       const remaining=Math.max(1,Math.floor((barEnd-dest)/beat));
+       const sustainBeats=Math.min(remaining,1+Math.floor(rng()*2));
+       const sl=pickWeightedSlice(slices,rng,true);
+       renderNatural(out,src,dest,sl,Math.floor(beat*sustainBeats),.38+rng()*.10,rng);
      }
    }
  }
  return out
 }
-function makeABNORMAL(src,sr,bpm,bars,total,attackList,rng,slicePool){
- const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
- const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,3);
- let sharedAnchor=null,sharedAnchorSlice=null;
-
+function makeNORMALB(src,sr,bpm,bars,total,attackList,rng,slicePool){
+ const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
  for(let b=0;b<bars;b++){
-   const base=Math.floor(b*bar);
-   // 35%の確率で、4小節目だけ同一素材のマシンガン加速フレーズを挿入。
-   // 外れた場合は、4小節目も従来のABNORMALパターンで生成する。
-   if(b===3&&rng()<.35){
-     const accelSlice=pick(slices,rng);
-     const accelCells=[[0],[0],[0,.5],[0,.25,.5,.625,.75,.875]];
-     for(let q=0;q<4;q++){
-       renderBeatCell(out,src,base+Math.floor(q*beat),beat,accelCells[q],accelSlice,sr,.76+rng()*.08,rng,false);
-     }
+   const base=Math.floor(b*bar),barEnd=Math.min(total,base+Math.floor(bar));
+   // 従来の刻み。
+   for(let q=0;q<4;q++){
+     const sl=pickWeightedSlice(slices,rng,true),cell=grooveCell(rng,true);
+     renderBeatCell(out,src,base+Math.floor(q*beat),beat,cell,sl,sr,.48+rng()*.10,rng,true);
+   }
+   // 従来の伸ばし＋ピッチベンド。
+   for(let q=0;q<4;q++)if(rng()<.58){
+     const dest=base+Math.floor(q*beat),remaining=Math.max(1,Math.floor((barEnd-dest)/beat));
+     const sustainBeats=Math.min(remaining,1+Math.floor(rng()*2));
+     const sl=pickWeightedSlice(slices,rng,true),target=Math.min(barEnd-dest,Math.floor(beat*sustainBeats));
+     if(rng()<.5)renderPitchRise(out,src,dest,sl,target,.42+rng()*.10);
+     else renderPitchFall(out,src,dest,sl,target,.42+rng()*.10);
+   }
+   // NORMAL B固有：毎小節必ず1〜4拍の長い原音フレーズを流す。
+   const startBeat=rng()<.72?0:Math.floor(rng()*4);
+   const dest=base+Math.floor(startBeat*beat);
+   const maxBeats=Math.max(1,Math.min(4,Math.floor((barEnd-dest)/beat)));
+   const phraseBeats=1+Math.floor(rng()*maxBeats);
+   const candidates=slices.slice().sort((a,b)=>b.length-a.length);
+   const sl=pick(candidates.slice(0,Math.max(1,Math.ceil(candidates.length*.50))),rng);
+   renderLongPhrase(out,src,dest,sl.start,Math.floor(beat*phraseBeats),.88+rng()*.08);
+ }
+ return out
+}
+function renderAbnormalFourSlicePattern(out,src,base,beat,slices,sr,rng,hard){
+ const pool=ensureMinimumSlices(slices,src,sr,4).slice();
+ const chosen=[];
+ while(chosen.length<4){
+   const available=pool.filter(s=>!chosen.includes(s));
+   chosen.push(pick(available.length?available:pool,rng));
+ }
+ const [A,B,C,D]=chosen;
+ const gain=hard?.86:.64;
+ const hit=(slice,offset,dur,g=gain)=>renderOneShot(out,src,base+Math.floor(offset*beat),slice.start,Math.max(Math.floor(sr*.025),Math.min(slice.length,Math.floor(dur*beat))),g+rng()*.08);
+ // 4拍。[]は半拍： [A(休)][B]・[CC][B]・[AD][BD]・[A][B]
+ hit(A,0,.20);                    // Aの後半は休符
+ hit(B,.5,.42);
+ hit(C,1,.18); hit(C,1.25,.18);  // CC
+ hit(B,1.5,.42);
+ hit(A,2,.18); hit(D,2.25,.18);  // AD
+ hit(B,2.5,.18); hit(D,2.75,.18);// BD
+ hit(A,3,.42);
+ hit(B,3.5,.42);
+}
+function renderAbnormalAccelPattern(out,src,base,beat,slices,sr,rng,hard){
+ const accelSlice=pick(slices,rng);
+ const accelCells=[[0],[0],[0,.5],[0,.25,.5,.625,.75,.875]];
+ for(let q=0;q<4;q++)renderBeatCell(out,src,base+Math.floor(q*beat),beat,accelCells[q],accelSlice,sr,(hard?.82:.68)+rng()*.08,rng,!hard);
+}
+function makeABNORMALCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
+ const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
+ const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
+ for(let b=0;b<bars;b++){
+   const base=Math.floor(b*bar),barEnd=Math.min(total,base+Math.floor(bar));
+   // 4小節目限定の加速マシンガン。従来35%から65%へ増加。
+   if(b===3&&rng()<.65){
+     renderAbnormalAccelPattern(out,src,base,beat,slices,sr,rng,hard);
      continue;
    }
-
-   if(b%2===0||!sharedAnchor){
-     sharedAnchor=grooveCell(rng,false);
-     sharedAnchorSlice=pick(slices,rng);
+   // 4スライス固定パターンをABNORMAL A/Bの両方へ30%で追加。
+   if(rng()<.30){
+     renderAbnormalFourSlicePattern(out,src,base,beat,slices,sr,rng,hard);
+     continue;
    }
-
-   const others=slices.filter(s=>s!==sharedAnchorSlice);
-   const slice2=pick(others.length?others:slices,rng);
-   const remaining=others.filter(s=>s!==slice2);
-   const slice4=pick(remaining.length?remaining:others.length?others:slices,rng);
-
-   const beat2=grooveCell(rng,false),beat4=grooveCell(rng,false);
-   const cells=[sharedAnchor,beat2,sharedAnchor,beat4];
-   const beatSlices=[sharedAnchorSlice,slice2,sharedAnchorSlice,slice4];
-
-   for(let q=0;q<4;q++){
-     renderBeatCell(out,src,base+Math.floor(q*beat),beat,cells[q],beatSlices[q],sr,.70+rng()*.15,rng,false);
+   if(hard){
+     // A: short, dense, dry, attacking bursts. No long flowing material.
+     for(let q=0;q<4;q++){
+       const sl=pick(slices,rng),dest=base+Math.floor(q*beat);
+       const cells=pick([[0,.25,.5,.75],[0,.125,.25,.5,.625,.75,.875],[0,.25,.375,.5,.75,.875]],rng);
+       for(let i=0;i<cells.length;i++){
+         const d=dest+Math.floor(cells[i]*beat),len=Math.max(Math.floor(sr*.028),Math.min(sl.length,Math.floor(beat*(.07+rng()*.08))));
+         renderOneShot(out,src,d,sl.start,len,.82+rng()*.12);
+       }
+     }
+   }else{
+     // B: longer, rounder, fewer attacks, softer envelopes.
+     for(let q=0;q<4;q++){
+       const sl=pickWeightedSlice(slices,rng,true),dest=base+Math.floor(q*beat);
+       const cell=pick([[0],[0,.5],[0,.75]],rng);
+       renderBeatCell(out,src,dest,beat,cell,sl,sr,.58+rng()*.10,rng,true);
+     }
+     if(rng()<.72){
+       const startBeat=Math.floor(rng()*3),dest=base+Math.floor(startBeat*beat),target=Math.min(barEnd-dest,Math.floor(beat*(1+rng()*2)));
+       const sl=pickWeightedSlice(slices,rng,true);
+       renderLongPhrase(out,src,dest,sl.start,target,.54+rng()*.10);
+     }
    }
  }
  return out
 }
-function makeHYPER(src,sr,bpm,bars,total,attackList,rng,slicePool){const out=new Float32Array(total),beat=sr*60/bpm,bar=Math.floor(beat*4);for(let b=0;b<bars;b++){const localTotal=Math.min(bar,total-b*bar),mode=(b%3===2||rng()<.42)?"ab":"normal",tmp=mode==="ab"?makeABNORMAL(src,sr,bpm,1,localTotal,attackList,rng,slicePool):makeNORMAL(src,sr,bpm,1,localTotal,attackList,rng,slicePool);for(let i=0;i<tmp.length&&b*bar+i<out.length;i++)out[b*bar+i]+=tmp[i]}return out}
+function makeABNORMALA(src,sr,bpm,bars,total,attackList,rng,slicePool){return makeABNORMALCore(src,sr,bpm,bars,total,attackList,rng,slicePool,true)}
+function makeABNORMALB(src,sr,bpm,bars,total,attackList,rng,slicePool){return makeABNORMALCore(src,sr,bpm,bars,total,attackList,rng,slicePool,false)}
+function mixTracks(a,b,ga=.72,gb=.72){const out=new Float32Array(Math.max(a.length,b.length));for(let i=0;i<out.length;i++)out[i]=(a[i]||0)*ga+(b[i]||0)*gb;return out}
+function makeHYPERA(src,sr,bpm,bars,total,attackList,rng,slicePool){return mixTracks(makeNORMALA(src,sr,bpm,bars,total,attackList,rng,slicePool),makeABNORMALA(src,sr,bpm,bars,total,attackList,rng,slicePool))}
+function makeHYPERB(src,sr,bpm,bars,total,attackList,rng,slicePool){return mixTracks(makeNORMALB(src,sr,bpm,bars,total,attackList,rng,slicePool),makeABNORMALB(src,sr,bpm,bars,total,attackList,rng,slicePool))}
 function pickWeightedSlice(slices,rng,longPreferred){const filtered=slices.filter(s=>longPreferred?s.length>12000:s.length>1500);return pick(filtered.length?filtered:slices,rng)}
 function ensureMinimumSlices(slices,src,sr,count){
  if(slices.length>=count)return slices;
