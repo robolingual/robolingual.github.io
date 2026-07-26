@@ -974,7 +974,47 @@ speedSlider.addEventListener("input",()=>setMasterRate(sliderToRate(speedSlider.
 speedSlider.addEventListener("dblclick",resetMasterRate);
 speedResetLabel.addEventListener("click",resetMasterRate);
 
-function detectAttacks(src,sr){const hop=Math.max(64,Math.floor(sr*.005)),win=Math.max(hop*2,Math.floor(sr*.02)),env=[];for(let p=0;p<src.length;p+=hop){let sum=0,end=Math.min(src.length,p+win);for(let i=p;i<end;i++)sum+=src[i]*src[i];env.push(Math.sqrt(sum/Math.max(1,end-p)))}let max=0;for(const v of env)if(v>max)max=v;const floor=max*.035,minGap=Math.floor(.065*sr/hop);const out=[];let last=-minGap;for(let i=2;i<env.length-2;i++){const rise=env[i]-Math.min(env[i-2],env[i-1]),local=env[i]>=env[i-1]&&env[i]>=env[i+1];if(env[i]>floor&&rise>max*.018&&local&&i-last>=minGap){let sample=i*hop;const search=Math.min(src.length,sample+Math.floor(sr*.018));while(sample<search&&Math.abs(src[sample])<maxAbs(src,sample,search)*.12)sample++;out.push(sample);last=i}}if(!out.length)out.push(0);return out}
+function highPassInPlace(data,start,len,sr,cutoffHz){
+  // 短い一撃の低域を削り、連打時の団子状の濁りを防ぐ簡易ハイパス。
+  const rc=1/(2*Math.PI*cutoffHz),dt=1/sr,alpha=rc/(rc+dt);
+  const end=Math.min(data.length,start+len);
+  let prevIn=data[start]||0,prevOut=0;
+  for(let i=start;i<end;i++){
+    const x=data[i],y=alpha*(prevOut+x-prevIn);
+    data[i]=y;prevIn=x;prevOut=y;
+  }
+}
+function hardClipInPlace(data,start,len,drive){
+  // BOSS系ペダルを意識した金属的なハードクリップ・ディストーション。driveが高いほど歪みが強い。
+  const end=Math.min(data.length,start+len);
+  for(let i=start;i<end;i++){
+    let x=data[i]*drive;
+    x=Math.max(-1,Math.min(1,x));
+    data[i]=x*.85;
+  }
+}
+function applyDelayInPlace(out,sr,startSample,endSample,delayMs,feedback,mix){
+  // シンプルなフィードバック・ディレイ（エコー）。書き込み済みの過去サンプルを参照して山彦を作る。
+  const delaySamples=Math.max(1,Math.floor(sr*delayMs/1000));
+  const end=Math.min(out.length,endSample);
+  for(let i=startSample;i<end;i++){
+    const d=i-delaySamples;
+    if(d>=startSample)out[i]+=out[d]*feedback*mix;
+  }
+}
+function detectAttacks(src,sr){const hop=Math.max(64,Math.floor(sr*.005)),win=Math.max(hop*2,Math.floor(sr*.02)),env=[];for(let p=0;p<src.length;p+=hop){let sum=0,end=Math.min(src.length,p+win);for(let i=p;i<end;i++)sum+=src[i]*src[i];env.push(Math.sqrt(sum/Math.max(1,end-p)))}let max=0;for(const v of env)if(v>max)max=v;const floor=max*.035,minGap=Math.floor(.065*sr/hop);const out=[];let last=-minGap;const preRoll=Math.floor(sr*.003),zcSearch=Math.floor(sr*.004);for(let i=2;i<env.length-2;i++){const rise=env[i]-Math.min(env[i-2],env[i-1]),local=env[i]>=env[i-1]&&env[i]>=env[i+1];if(env[i]>floor&&rise>max*.018&&local&&i-last>=minGap){let sample=i*hop;const search=Math.min(src.length,sample+Math.floor(sr*.018));while(sample<search&&Math.abs(src[sample])<maxAbs(src,sample,search)*.12)sample++;sample=Math.max(0,sample-preRoll);sample=snapToZeroCrossing(src,sample,zcSearch);out.push(sample);last=i}}if(!out.length)out.push(0);return out}
+function snapToZeroCrossing(src,sample,searchRange){
+  // 出音の頭をゼロ交差点に微調整し、連打時のクリックノイズを防ぐ。プリロールで少し手前から自然に鳴らし始める。
+  const lo=Math.max(0,sample-searchRange),hi=Math.min(src.length-2,sample+searchRange);
+  let best=sample,bestDist=Infinity;
+  for(let i=lo;i<hi;i++){
+    if((src[i]>=0)!==(src[i+1]>=0)){
+      const dist=Math.abs(i-sample);
+      if(dist<bestDist){bestDist=dist;best=i}
+    }
+  }
+  return best;
+}
 function maxAbs(src,a,b){let m=0;for(let i=a;i<b;i++)m=Math.max(m,Math.abs(src[i]));return m}
 function makeSlices(src,sr,attackList){const list=[];for(let i=0;i<attackList.length;i++){const start=attackList[i],next=i+1<attackList.length?attackList[i+1]:src.length;let end=Math.min(src.length,Math.max(start+Math.floor(sr*.09),next));const maxLen=Math.floor(sr*1.8);end=Math.min(end,start+maxLen);if(end-start>=Math.floor(sr*.045))list.push({start,end,length:end-start})}return list.length?list:[{start:0,end:Math.min(src.length,Math.floor(sr*.5)),length:Math.min(src.length,Math.floor(sr*.5))}]}
 function sliceTextureScore(sl,src,sr){
@@ -1149,6 +1189,7 @@ function makeABNORMALCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
          renderOneShot(out,src,d,sl.start,len,.82+rng()*.12);
        }
      }
+     highPassInPlace(out,base,barEnd-base,sr,140); // 密な連打の低域を軽く削り、団子状の濁りを防ぐ
    }else{
      // B: longer, rounder, fewer attacks, softer envelopes.
      for(let q=0;q<4;q++){
@@ -1176,7 +1217,9 @@ function renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng){
     const dest=base+Math.floor(q*beat);
     const sl=slices[(q*3+Math.floor(rng()*2))%slices.length]; // 拍ごとに異なるスライスを固定的に選ぶ
     const len=Math.floor(beat*(.45+(q%2===0?.15:0))); // 1拍目・3拍目は少し長め
-    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,len),accents[q]*(.92+rng()*.06));
+    const hitLen=Math.min(sl.length,len);
+    renderOneShot(out,src,dest,sl.start,hitLen,accents[q]*(.92+rng()*.06));
+    highPassInPlace(out,dest,hitLen,sr,160); // 低域を軽く削って団子状の濁りを防ぐ
   }
 }
 // --- BANKER（旧HYPER）：NINJA/KILLERの単純合成ではなく、独自の性格を持つ。
@@ -1239,72 +1282,66 @@ function makeHYPERC(src,sr,bpm,bars,total,attackList,rng,slicePool){
 // ソースを読み込み直すたびに使われるスライス（音色）は変わるが、
 // タイミング構造そのものはrng()に依存しない固定振り付けにしている。
 function makeNORMALD(src,sr,bpm,bars,total,attackList,rng,slicePool){
+ // NINJA D：ピッチベンド＆グラニュラーであちこち飛び回り、最後にズバーンと着地する一撃必殺技。
  const out=new Float32Array(total),beat=sr*60/bpm;
  const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
- const at=i=>slices[i%slices.length];
- // ブレイク/SE想定：最大4拍に収める（4小節ループではない）。
  const span=Math.min(total,Math.floor(beat*4));
- // 助走：唸りを上げるピッチライズ
- const riseLen=Math.min(span,Math.floor(span*.36));
- renderPitchRise(out,src,0,at(0),riseLen,.62);
- // 頂点：伸びやかなサステインでピークを保持
- const peakStart=riseLen,peakLen=Math.min(span-peakStart,Math.floor(span*.24));
- renderNatural(out,src,peakStart,at(1),peakLen,.95,rng);
- // 二段目：小さく畳み掛けるもう一段のライズ
- const rise2Start=peakStart+peakLen,rise2Len=Math.min(Math.max(0,span-rise2Start),Math.floor(span*.16));
- renderPitchRise(out,src,rise2Start,at(2),rise2Len,.7);
- // 着地：大きく下降して余韻を残す
- const fallStart=rise2Start+rise2Len,fallLen=Math.max(0,span-fallStart);
- renderPitchFall(out,src,fallStart,at(3),fallLen,.8);
+ const grainZone=Math.floor(span*.7);
+ for(let i=0;i<14;i++){
+   const dest=Math.floor(rng()*Math.max(1,grainZone-Math.floor(sr*.05)));
+   const sl=pick(slices,rng);
+   const len=Math.floor(sr*(.03+rng()*.05));
+   const semis=Math.floor(rng()*7)*(rng()<.5?1:-1);
+   renderPitchedOneShot(out,src,dest,sl.start,Math.min(sl.length,len),.5+rng()*.25,semis);
+ }
+ const finisher=slices.slice().sort((a,b)=>b.length-a.length)[0];
+ const fallStart=grainZone,fallLen=Math.max(0,span-fallStart);
+ renderPitchFall(out,src,fallStart,finisher,fallLen,1.0);
  return out
 }
 function makeABNORMALD(src,sr,bpm,bars,total,attackList,rng,slicePool){
+ // KILLER D：「だっ」→「だだだ」→「ががが」→「ギんギ」と低く硬い連打が続き、
+ // 段階的にディストーション(ハードクリップ)を強めていく一撃必殺技。
  const out=new Float32Array(total),beat=sr*60/bpm;
  const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
- const at=i=>slices[i%slices.length];
- // ブレイク/SE想定：最大4拍のキルショットに圧縮（4小節ループではない）。
+ const hardSlices=slices.filter(s=>s.length<sr*.3);
+ const pool=hardSlices.length?hardSlices:slices;
  const span=Math.min(total,Math.floor(beat*4));
- let pos=0;
- // 第1段：十六分のマシンガンで一気に助走（1拍分）
- for(let i=0;i<8&&pos<span;i++){
-   renderOneShot(out,src,Math.floor(pos),at(i).start,Math.min(at(i).length,Math.floor(beat*.12)),.6+i*.03);
-   pos+=beat/8;
+ const stageLen=Math.floor(span/4);
+ const drives=[1.0,1.8,2.6,3.6];
+ const hitCounts=[1,3,3,2];
+ for(let s=0;s<4;s++){
+   const stageStart=s*stageLen,stageEnd=Math.min(span,stageStart+stageLen);
+   const n=hitCounts[s],step=Math.max(1,Math.floor((stageEnd-stageStart)/(n+1)));
+   for(let i=0;i<n;i++){
+     const dest=stageStart+i*step;
+     const sl=pool[(s*3+i)%pool.length];
+     const len=Math.max(Math.floor(sr*.03),Math.min(sl.length,Math.floor(beat*.22)));
+     renderOneShot(out,src,dest,sl.start,len,.85+rng()*.1);
+   }
+   hardClipInPlace(out,stageStart,stageEnd-stageStart,drives[s]);
  }
- // 第2段：八分音符で畳み掛け（1拍分）
- for(let i=0;i<4&&pos<span;i++){
-   renderOneShot(out,src,Math.floor(pos),at(i+1).start,Math.min(at(i+1).length,Math.floor(beat*.2)),.8);
-   pos+=beat/4;
- }
- // 第3段：四分音符で溜めの一撃（1拍分）
- for(let i=0;i<2&&pos<span;i++){
-   renderOneShot(out,src,Math.floor(pos),at(i+2).start,Math.min(at(i+2).length,Math.floor(beat*.4)),.88);
-   pos+=beat/2;
- }
- // 溜め：一瞬の静寂
- pos+=beat*.25;
- // 最後の一撃（キルショット）：最長スライスを残り尺いっぱいに叩き切る
- const finisher=slices.slice().sort((a,b)=>b.length-a.length)[0];
- const finishStart=Math.floor(pos),finishLen=Math.max(0,span-finishStart);
- if(finishLen>0)renderLongPhrase(out,src,finishStart,finisher.start,Math.min(finisher.length,finishLen),1.0);
  return out
 }
 function makeHYPERD(src,sr,bpm,bars,total,attackList,rng,slicePool){
-  // BANKER D：机帳面な高速カウント→最後にレジを打つような締めの一撃。最大4拍のブレイク/SE。
-  const out=new Float32Array(total),beat=sr*60/bpm;
-  const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
-  const at=i=>slices[i%slices.length];
-  const span=Math.min(total,Math.floor(beat*4));
-  let pos=0;
-  // 均等な16分カウント（3拍分、機械的に正確でズレない）
-  for(let i=0;i<12&&pos<span;i++){
-    renderOneShot(out,src,Math.floor(pos),at(i).start,Math.min(at(i).length,Math.floor(beat*.12)),.68+(i%4===0?.18:0));
-    pos+=beat/4;
-  }
-  // 締めの一撃（最長スライスを残り尺いっぱいに）
-  const finisher=slices.slice().sort((a,b)=>b.length-a.length)[0];
-  const finishStart=Math.floor(pos),finishLen=Math.max(0,span-finishStart);
-  if(finishLen>0)renderLongPhrase(out,src,finishStart,finisher.start,Math.min(finisher.length,finishLen),1.0);
-  return out;
+ // BANKER D：お金ハッピーな質感。ポヨンポヨンと短くしゃくり上げるピッチライズに、
+ // キラキラした高いピッチの粒を散りばめる一撃必殺技。
+ const out=new Float32Array(total),beat=sr*60/bpm;
+ const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
+ const span=Math.min(total,Math.floor(beat*4));
+ const boingCount=6,boingLen=Math.floor(beat*.35);
+ for(let i=0;i<boingCount;i++){
+   const dest=Math.floor(i*(span/boingCount));
+   const sl=slices[i%slices.length];
+   renderPitchRise(out,src,dest,sl,Math.min(boingLen,Math.max(0,span-dest)),.6+rng()*.1);
+ }
+ for(let i=0;i<10;i++){
+   const dest=Math.floor(rng()*span*.9);
+   const sl=pick(slices,rng);
+   const len=Math.floor(sr*.02);
+   renderPitchedOneShot(out,src,dest,sl.start,Math.min(sl.length,len),.35+rng()*.15,7+Math.floor(rng()*5));
+ }
+ return out;
 }
 
 // --- GLITCH: 4キャラクター目。既存の骨格（伸ばし／グルーヴ／4スライス）を
@@ -1366,48 +1403,23 @@ function makeGLITCHC(src,sr,bpm,bars,total,attackList,rng,slicePool){
  return out
 }
 function makeGLITCHD(src,sr,bpm,bars,total,attackList,rng,slicePool){
+ // WITCH D：1/16刻みの塊を不規則に間引きながら飛ばし、塊ごとにピッチベンドで上下させる。
+ // 全体にディレイをかけて、混乱とメルヘンさが同居する一撃必殺技。
  const out=new Float32Array(total),beat=sr*60/bpm;
  const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
- const at=i=>slices[i%slices.length];
- // ブレイク/SE想定：最大4拍の総崩壊フィニッシュに圧縮（4小節ループではない）。
  const span=Math.min(total,Math.floor(beat*4));
- // 第1段：まだ聴き取れる程度のロングトーンから始まる
- const introLen=Math.min(span,Math.floor(span*.25));
- renderNatural(out,src,0,at(0),introLen,.75,rng);
- // 第2段：同じ素材を少しずつビットクラッシュで潰す
- const crushStart=introLen,crushLen=Math.min(Math.max(0,span-crushStart),Math.floor(span*.25));
- if(crushLen>0){
-   renderNatural(out,src,crushStart,at(0),crushLen,.75,rng);
-   bitcrushInPlace(out.subarray(crushStart,crushStart+crushLen),6,3);
+ const step=Math.max(1,Math.floor(beat/4)),steps=Math.floor(span/step);
+ for(let i=0;i<steps;i++){
+   if(rng()<.45)continue; // 不規則に間引き、塊(ABCDEF的な断片)が飛び飛びに現れるようにする
+   const dest=i*step;
+   const sl=pick(slices,rng);
+   const len=Math.min(sl.length,step*(1+Math.floor(rng()*2)),span-dest);
+   if(len<=0)continue;
+   if(rng()<.5)renderPitchRise(out,src,dest,sl,len,.5+rng()*.2);
+   else renderPitchFall(out,src,dest,sl,len,.5+rng()*.2);
  }
- // 第3段：固定間隔のスタッター（等間隔リトリガーで機械的に崩す）
- const stutterStart=crushStart+crushLen,stutterLen=Math.min(Math.max(0,span-stutterStart),Math.floor(span*.25));
- if(stutterLen>0){
-   const stutterCount=10;
-   for(let i=0;i<stutterCount;i++){
-     const d=stutterStart+Math.floor(i*(stutterLen/stutterCount));
-     if(d>=span)break;
-     const len=Math.max(Math.floor(sr*.015),Math.floor(stutterLen/stutterCount));
-     const sl=at(i+1);
-     renderOneShot(out,src,d,sl.start,Math.min(sl.length,len),.7+i*.02);
-   }
- }
- // 第4段：逆再生バースト
- const revStart=stutterStart+stutterLen,revLen=Math.min(Math.max(0,span-revStart),Math.floor(span*.15));
- if(revLen>0)renderReversedOneShot(out,src,revStart,at(2).start,Math.min(at(2).length,revLen),.85);
- // 最終段：高速グリッチ痙攣からのハードカットオフで総崩壊を締める
- const spasmStart=revStart+revLen,spasmLen=Math.max(0,span-spasmStart);
- if(spasmLen>0){
-   const spasmSlice=at(3);
-   const step=Math.max(Math.floor(sr*.01),Math.floor(spasmLen/14));
-   let i=0;
-   for(let d=spasmStart;d<span&&i<14;d+=step,i++){
-     const len=Math.min(spasmSlice.length,step);
-     if(i%2===0)renderOneShot(out,src,d,spasmSlice.start,len,.9);
-     else renderReversedOneShot(out,src,d,spasmSlice.start,len,.9);
-   }
-   bitcrushInPlace(out.subarray(spasmStart,span),4,4);
- }
+ const delayMs=(beat/4)/sr*1000; // 1/16音符ぶんのディレイタイムで幻惑的なエコーを重ねる
+ applyDelayInPlace(out,sr,0,span,delayMs,.4,.55);
  return out
 }
 function pickWeightedSlice(slices,rng,longPreferred){const filtered=slices.filter(s=>longPreferred?s.length>12000:s.length>1500);return pick(filtered.length?filtered:slices,rng)}
