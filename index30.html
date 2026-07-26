@@ -152,12 +152,22 @@ main{overflow:visible}
 .speed-reset-label{cursor:pointer;font-weight:900;text-decoration:underline;text-underline-offset:2px}
 .speed-reset-label:active{opacity:.6}
 
+.preset-row{display:flex;gap:6px;margin:6px 0 0}
+.preset-btn{flex:1;font-size:10px;padding:6px 2px;background:#1a1a1a;color:#999;border:1px solid #333;border-radius:6px;letter-spacing:0;cursor:pointer}
+.preset-btn.active{color:#ff2aa8;border-color:#ff2aa8}
+.preset-btn:disabled{opacity:.4;cursor:default}
+
 </style>
 </head>
 <body>
 <div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.30</div></div><main>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 <div class="row waveform-row"><div><div id="waveBox"><canvas id="wave"></canvas><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
+<div class="preset-row" aria-label="Preset samples">
+  <button class="preset-btn" type="button" data-preset="1">PRESET 1</button>
+  <button class="preset-btn" type="button" data-preset="2">PRESET 2</button>
+  <button class="preset-btn" type="button" data-preset="3">PRESET 3</button>
+</div>
 <div class="performance-controls" aria-label="Recorded performance controls"><button id="performancePlay" class="play-led" type="button" disabled>▶ PLAY</button><button id="performanceStop" type="button">■ STOP</button><button id="performanceRec" class="rec-led" type="button" disabled>● REC</button><button id="performanceSave" type="button" disabled>SAVE</button></div><div class="translate-bpm-row"><button id="downloadAll" class="dl-wav" type="button" disabled>DL WAV</button><button id="translate" type="button" disabled>TRANSLATE</button><label class="bpm-panel" for="bpm"><input id="bpm" type="number" min="60" max="260" step="1" value="170"><span>BPM</span></label><input id="bars" type="hidden" value="4"></div></div></div>
 <section id="results">
 <div class="mixer-layout">
@@ -283,6 +293,47 @@ function buildSoundLogoTrack(total,sr,bpm){
 function clearURLs(){while(objectURLs.length)URL.revokeObjectURL(objectURLs.pop())}
 // 同じファイルを再選択できるようにする。iPhoneでは選択前に value を消すと
 // 写真アプリから戻った直後の file を失う場合があるため、取得後にリセットする。
+// プリセット音源：GitHub上の同階層にある presets/preset1.wav 〜 preset3.wav を想定。
+const PRESET_FILES=["presets/preset1.wav","presets/preset2.wav","presets/preset3.wav"];
+async function loadPreset(index){
+  const url=PRESET_FILES[index-1];
+  if(!url)return;
+  if(performanceRecording)stopPerformanceRecording();
+  stopRecordedPlayback(false);
+  stopMixer(true);
+  clearURLs();
+  setSamplerEnabled(false);
+  setMainAction("busy","LOADING...",true);
+  sourceBuffer=null;mono=null;attacks=[];recordedBuffer=null;recordedBlob=null;performancePlay.disabled=true;performanceRec.disabled=true;performanceSave.disabled=true;downloadAll.disabled=true;translateButton.disabled=true;
+  filename.textContent=`PRESET ${index}`;
+  setStatus("Loading preset...");
+  try{
+    const ctx=getAudioContext();
+    try{if(ctx.state==="suspended")await ctx.resume()}catch(_){}
+    const res=await fetch(url);
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const data=await res.arrayBuffer();
+    sourceBuffer=await ctx.decodeAudioData(data);
+    mono=toMono(sourceBuffer);
+    attacks=detectAttacks(mono,sourceBuffer.sampleRate);
+    drawWave();
+    setMainAction("choose","CHOOSE SOURCE");
+    translateButton.disabled=false;
+    setStatus(`Ready — ${attacks.length} attacks detected (preset ${index})`);
+    document.querySelectorAll(".preset-btn").forEach(b=>b.classList.toggle("active",b.dataset.preset===String(index)));
+  }catch(e){
+    console.error(e);
+    drawEmptyWave();
+    setStatus(`Could not load preset ${index}${e&&e.message?` (${e.message})`:""}`);
+    setMainAction("choose","CHOOSE SOURCE");
+  }
+}
+document.querySelectorAll(".preset-btn").forEach(btn=>{
+  btn.addEventListener("click",()=>loadPreset(Number(btn.dataset.preset)));
+});
+// 起動時に1曲目のプリセットを自動で読み込む。読み込み失敗時は静かにNO SOURCE状態のまま。
+loadPreset(1);
+
 sourceInput.addEventListener("click",()=>{
   setStatus("Waiting for iPhone Photos to hand over the file...");
   setMainAction("busy","WAITING...",true);
@@ -622,8 +673,12 @@ async function runTranslate(){
     abnormalDownloads.innerHTML="";
     hyperDownloads.innerHTML="";
     glitchDownloads.innerHTML="";
+    let jobIndex=0;
     for(const[modeKey,variantKey,mode,variant,maker,slicePool]of jobs){
-      const rng=mulberry32(cryptoSeed());
+      // ?seed=数字 をURLに付けた時だけ固定シードを使う。通常はUIに何も出さず完全ランダムのまま。
+      const fixedSeed=new URLSearchParams(location.search).get("seed");
+      const rng=fixedSeed!==null?mulberry32((Number(fixedSeed)>>>0)+jobIndex*7919):mulberry32(cryptoSeed());
+      jobIndex++;
       const output=maker(mono,sr,bpm,bars,total,attacks,rng,slicePool);
       softLimit(output,.96);
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
