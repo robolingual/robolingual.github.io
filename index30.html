@@ -902,6 +902,8 @@ function applyMixerGains(){
 
 function triggerOneShotD(mode){
   // Dは4系統ループの仕組みから独立：押した瞬間に単発で再生する（他の再生状況とは無関係）。
+  // Dのバッファは常に「全体(4小節)の先頭1/4だけに音がある」構造なので、
+  // 無音スキャンに頼らず、構造的に確実な1/4の時点で再生を止める。
   const buffer=rendered[mode]&&rendered[mode].d;
   if(!buffer)return;
   const ctx=getAudioContext();
@@ -913,13 +915,18 @@ function triggerOneShotD(mode){
   source.playbackRate.setValueAtTime(masterRate,ctx.currentTime);
   gain.gain.setValueAtTime(1,ctx.currentTime);
   source.connect(gain).connect(getMixerMaster());
-  source.start(ctx.currentTime);
+  const contentSeconds=buffer.duration/4;
+  const rate=Math.max(.05,masterRate);
+  const realSeconds=contentSeconds/rate;
+  source.start(ctx.currentTime,0,contentSeconds);
+  const input=document.getElementById(mode+"D");
+  const clearLight=()=>{if(input)input.checked=false};
   source.onended=()=>{
     try{source.disconnect()}catch(_){}
     try{gain.disconnect()}catch(_){}
-    const input=document.getElementById(mode+"D");
-    if(input)input.checked=false;
+    clearLight();
   };
+  setTimeout(clearLight,(realSeconds*1000)+60); // フェイルセーフ
 }
 document.querySelectorAll('.switches input[type="radio"][value="d"]').forEach(el=>{
   el.addEventListener("change",()=>{if(el.checked)triggerOneShotD(el.name.replace(/D$/,""))});
