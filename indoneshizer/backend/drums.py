@@ -31,10 +31,15 @@ def _sine_sweep(sr: int, n: int, f_start: float, f_end: float, tau: float) -> np
     return np.sin(phase)
 
 
-def _main_kick(sr: int) -> np.ndarray:
-    """短く硬いキック(仕様書6章: Decay 80〜160ms, 基音50〜70Hz, クリック有り)。"""
-    n = int(sr * 0.15)
-    body = _sine_sweep(sr, n, 320, 58, 0.028) * _env(n, 0.13)
+def _main_kick(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
+    """短く硬いキック(仕様書6章: Decay 80〜160ms, 基音50〜70Hz, クリック有り)。
+
+    pitch_semi を上げると音程が上がる。高くなるほど尾も短くする
+    (ビルドで詰めて撃つとき、長い尾が残ると団子になるため)。
+    """
+    f = 2 ** (pitch_semi / 12)
+    n = int(sr * 0.15 / (1 + pitch_semi / 24))
+    body = _sine_sweep(sr, n, 320 * f, 58 * f, 0.028) * _env(n, 0.13)
     click = np.random.uniform(-1, 1, n) * _env(n, 0.006)
     return tone.saturate(body * 1.35 + click * 0.35, tone.DRIVE["main_kick"])
 
@@ -146,8 +151,9 @@ def _tom_fill(sr: int, bpm: float) -> np.ndarray:
     return track
 
 
-# ブレイクが小節のどのstep(0始まり)から通常パターンを乗っ取るか
-_BREAK_TAKEOVER_STEP = {"small": 12, "large": 8}
+# ブレイクが小節のどのstep(0始まり)から通常パターンを乗っ取るか。
+# "large" は0=小節まるごと差し替え。
+_BREAK_TAKEOVER_STEP = {"small": 12, "large": 0}
 
 
 def _small_break(sr: int, bpm: float) -> np.ndarray:
@@ -165,23 +171,33 @@ def _small_break(sr: int, bpm: float) -> np.ndarray:
 
 
 def _large_break(sr: int, bpm: float) -> np.ndarray:
-    """8小節目用の大きいブレイク。後半2拍を加速するスネアロールで、
-    最後は無音にしてループ頭へ落とす(仕様書7章)。"""
-    step_sec = 60.0 / bpm / 4
-    beat_sec = step_sec * 4
-    track = np.zeros(int(beat_sec * 2 * sr), dtype=np.float64)
+    """8小節目用の大きいブレイク。小節まるごとキックだけで刻む。
 
-    # 3拍目: 16分 / 4拍目前半: 32分 / 4拍目最後: 無音
-    hits: list[tuple[float, float]] = []  # (時刻, 進行度)
-    for i in range(4):                       # 16分 x4
-        hits.append((i * step_sec, i / 11))
-    for i in range(6):                       # 32分 x6
-        hits.append((beat_sec + i * step_sec / 2, (4 + i) / 11))
-    # 残り(32分2つ分)は無音
+        拍1「どん」 拍2「どん」 拍3「どんどん」(1/2拍)
+        拍4「どど」(1/4拍) +「どどどど」(1/8拍)
 
-    for t, progress in hits:
-        _mix_at(track, _snare(sr, pitch_semi=progress * 7, decay=0.06),
-                int(t * sr), gain=0.4 + 0.6 * progress)
+    最後の1拍(6発)でピッチが段階的に1オクターブ上がる。
+    """
+    beat_sec = 60.0 / bpm
+    track = np.zeros(int(beat_sec * 4 * sr), dtype=np.float64)
+
+    # (拍位置, ピッチ, 音量)
+    hits: list[tuple[float, float, float]] = [
+        (0.0, 0.0, 1.00),   # 拍1 どん
+        (1.0, 0.0, 1.00),   # 拍2 どん
+        (2.0, 0.0, 0.95),   # 拍3 どん
+        (2.5, 0.0, 0.95),   # 拍3 どん (1/2拍)
+    ]
+
+    # 拍4: 1/4拍を2発 → 1/8拍を4発。この6発で1オクターブ上昇。
+    offsets = [0.0, 0.25, 0.5, 0.625, 0.75, 0.875]
+    for i, off in enumerate(offsets):
+        pitch = 12.0 * i / (len(offsets) - 1)
+        hits.append((3.0 + off, pitch, 0.85 + 0.15 * i / (len(offsets) - 1)))
+
+    for beat_pos, pitch, gain in hits:
+        _mix_at(track, _main_kick(sr, pitch_semi=pitch),
+                int(beat_pos * beat_sec * sr), gain)
 
     return track
 
