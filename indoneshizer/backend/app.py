@@ -24,7 +24,12 @@ app.add_middleware(
 
 
 @app.post("/remix")
-async def remix(file: UploadFile = File(...), bpm: float = Form(160.0)) -> FileResponse:
+async def remix(
+    file: UploadFile = File(...),
+    bpm: float = Form(180.0),
+    source_bpm: float | None = Form(None),
+    seed: int = Form(0),
+) -> FileResponse:
     work_dir = Path(tempfile.mkdtemp())
     input_path = work_dir / file.filename
     out_path = work_dir / "remix.wav"
@@ -32,6 +37,6 @@ async def remix(file: UploadFile = File(...), bpm: float = Form(160.0)) -> FileR
     with input_path.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    run(str(input_path), bpm, str(out_path))
+    run(str(input_path), bpm, str(out_path), source_bpm=source_bpm, seed=seed)
 
     return FileResponse(out_path, media_type="audio/wav", filename="indoneshizer_remix.wav")
