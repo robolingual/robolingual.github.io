@@ -1,0 +1,8 @@
+demucs
+librosa
+soundfile
+numpy
+scipy
+fastapi
+uvicorn
+python-multipart

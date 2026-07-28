@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Indoneshizer</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#0a0a0a;color:#aaff00;max-width:480px;margin:40px auto;padding:0 16px}
+  h1{letter-spacing:.1em;font-size:22px}
+  input,button{font:inherit;padding:10px;width:100%;margin:8px 0;box-sizing:border-box}
+  button{background:#aaff00;color:#0a0a0a;border:0;font-weight:700;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  #status{color:#888;font-size:13px;min-height:1.2em}
+  audio{width:100%;margin-top:12px}
+</style>
+</head>
+<body>
+<h1>INDONESHIZER</h1>
+<p>曲をアップロードすると全自動でファンコットリミックスにします。</p>
+<input type="file" id="file" accept="audio/*">
+<label>目標BPM
+  <input type="number" id="bpm" value="160" min="120" max="200">
+</label>
+<button id="go">リミックス生成</button>
+<div id="status"></div>
+<audio id="player" controls hidden></audio>
+
+<script>
+const API_BASE = "http://localhost:8000";
+
+document.getElementById("go").addEventListener("click", async () => {
+  const fileInput = document.getElementById("file");
+  const bpm = document.getElementById("bpm").value;
+  const statusEl = document.getElementById("status");
+  const player = document.getElementById("player");
+  const button = document.getElementById("go");
+
+  if (!fileInput.files.length) {
+    statusEl.textContent = "曲を選んでください";
+    return;
+  }
+
+  const form = new FormData();
+  form.append("file", fileInput.files[0]);
+  form.append("bpm", bpm);
+
+  button.disabled = true;
+  statusEl.textContent = "生成中...(音源分離があるため数分かかります)";
+
+  try {
+    const res = await fetch(`${API_BASE}/remix`, { method: "POST", body: form });
+    if (!res.ok) throw new Error(`サーバーエラー: ${res.status}`);
+    const blob = await res.blob();
+    player.src = URL.createObjectURL(blob);
+    player.hidden = false;
+    statusEl.textContent = "完成";
+  } catch (err) {
+    statusEl.textContent = `失敗: ${err.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
