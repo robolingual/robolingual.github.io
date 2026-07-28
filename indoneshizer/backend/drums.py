@@ -71,15 +71,15 @@ def _shaker(sr: int) -> np.ndarray:
 
 
 def _cowbell(sr: int, pitch_semi: float) -> np.ndarray:
-    """金属的な倍音を持つカウベル(仕様書5.7: High/Mid/Lowの3音色)。"""
+    """金属的な倍音を持つカウベル。基音は低めに取ってある。"""
     n = int(sr * 0.11)
-    f0 = 540 * (2 ** (pitch_semi / 12))
+    f0 = 420 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
     # 非整数倍の2音を重ねて金属感を出す
     tone = (np.sign(np.sin(2 * np.pi * f0 * t)) * 0.45
             + np.sin(2 * np.pi * f0 * 1.48 * t) * 0.35
             + np.sin(2 * np.pi * f0 * 2.67 * t) * 0.2)
-    sos = butter(2, 400, btype="highpass", fs=sr, output="sos")
+    sos = butter(2, 300, btype="highpass", fs=sr, output="sos")
     return np.tanh(sosfilt(sos, tone) * _env(n, 0.09) * 1.15)
 
 
@@ -201,31 +201,33 @@ def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100,
             continue
 
         for step in range(16):
+            # patterns.py は1始まり(DAWのステップ表示に合わせている)
+            n = step + 1
             pos = clock.step_to_sample(bar, step) + groove.offset_samples(
                 step, clock.step_sec, sr)
             pos = max(0, pos)
             g = groove.gain
 
-            if "main_kick" in layers and step in patterns.MAIN_KICK:
-                _mix_at(track, _main_kick(sr), pos, g(patterns.MAIN_KICK[step]))
+            if "main_kick" in layers and n in patterns.MAIN_KICK:
+                _mix_at(track, _main_kick(sr), pos, g(patterns.MAIN_KICK[n]))
                 kick_hits.append(pos)
-            if "short_kick" in layers and step in patterns.SHORT_KICK:
-                _mix_at(track, _short_kick(sr), pos, g(patterns.SHORT_KICK[step]))
-            if "snare" in layers and step in patterns.SNARE:
-                _mix_at(track, _snare(sr), pos, g(patterns.SNARE[step]))
-            if "hat_closed" in layers and step in patterns.HAT_CLOSED:
-                _mix_at(track, _hat(sr), pos, g(patterns.HAT_CLOSED[step]))
-            if "hat_ghost" in layers and step in patterns.HAT_GHOST:
-                _mix_at(track, _shaker(sr), pos, g(patterns.HAT_GHOST[step]))
-            if "hat_open" in layers and step in patterns.HAT_OPEN:
-                _mix_at(track, _hat(sr, open_hat=True), pos, g(patterns.HAT_OPEN[step]))
-            if "cowbell" in layers and step in patterns.COWBELL:
-                gain, pitch = patterns.COWBELL[step]
+            if "short_kick" in layers and n in patterns.SHORT_KICK:
+                _mix_at(track, _short_kick(sr), pos, g(patterns.SHORT_KICK[n]))
+            if "snare" in layers and n in patterns.SNARE:
+                _mix_at(track, _snare(sr), pos, g(patterns.SNARE[n]))
+            if "hat_closed" in layers and n in patterns.HAT_CLOSED:
+                _mix_at(track, _hat(sr), pos, g(patterns.HAT_CLOSED[n]))
+            if "hat_ghost" in layers and n in patterns.HAT_GHOST:
+                _mix_at(track, _shaker(sr), pos, g(patterns.HAT_GHOST[n]))
+            if "hat_open" in layers and n in patterns.HAT_OPEN:
+                _mix_at(track, _hat(sr, open_hat=True), pos, g(patterns.HAT_OPEN[n]))
+            if "cowbell" in layers and n in patterns.COWBELL:
+                gain, pitch = patterns.COWBELL[n]
                 _mix_at(track, _cowbell(sr, pitch), pos, g(gain))
-            if "woodblock" in layers and step in patterns.WOODBLOCK:
-                _mix_at(track, _woodblock(sr), pos, g(patterns.WOODBLOCK[step]))
-            if "tom" in layers and step in patterns.TOM:
-                gain, pitch = patterns.TOM[step]
+            if "woodblock" in layers and n in patterns.WOODBLOCK:
+                _mix_at(track, _woodblock(sr), pos, g(patterns.WOODBLOCK[n]))
+            if "tom" in layers and n in patterns.TOM:
+                gain, pitch = patterns.TOM[n]
                 _mix_at(track, _tom(sr, pitch), pos, g(gain))
 
         # タムフィルは通常パターンに重ねる(仕様書17.1 BAR4)
