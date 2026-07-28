@@ -12,7 +12,7 @@ _MINOR_PROFILE = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98,
 def detect_bpm(path: str) -> float:
     y, sr = librosa.load(path, sr=None, mono=True)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    return float(tempo)
+    return float(np.atleast_1d(tempo)[0])
 
 
 def detect_key(path: str) -> str:
