@@ -1,28 +1,21 @@
-"""ファンコットの多層ドラムを合成する(仕様書 5〜9章)。
+"""ファンコットの多層ドラムを合成する(仕様書5〜9章)。
 
-生サンプル素材は使わず、全パートをプロシージャル合成する。
-Amen/ブレイクビーツ(9章)はサンプル素材前提のためMVPでは未実装
-(仮定として明記: 将来サンプル素材が用意でき次第対応)。
+打点定義は patterns.py 側に分離してある(耳で詰めながら差し替えるため)。
+生サンプル素材は使わず、全パートを波形合成する。
+Amen/ブレイクビーツ(9章)はサンプル素材前提のためMVPでは未実装。
 """
 import numpy as np
 from scipy.signal import butter, sosfilt
 
+import patterns
 from clock import ClockGrid
 
-# 各8小節ブロック内でのバー番号(0-indexed, 8で割った余り)ごとに
-# 新規追加されるレイヤー。前のバーまでの追加は積み上げる(累積)。
-# 仕様書17.1 BAR1-8テンプレートに対応。
-_BAR_TEMPLATE_ADDITIONS = {
-    0: {"main_kick", "short_kick", "snare", "hat_closed"},
-    1: {"cowbell"},
-    2: {"woodblock"},
-    3: {"tom"},
-    4: set(),   # bassはArrangementGenerator側で管理
-    5: set(),
-    6: set(),   # 本来Voice追加(仕様書 BAR7)だが声ネタ素材未対応のため何もしない
-    7: set(),
-}
-_FILL_BAR = {3: "tom", 7: "snare_roll"}
+# 有効化できるレイヤー名。ArrangementGeneratorが小節ごとに部分集合を渡す。
+ALL_LAYERS = frozenset({
+    "main_kick", "short_kick", "snare",
+    "hat_closed", "hat_ghost", "hat_open",
+    "cowbell", "woodblock", "tom",
+})
 
 
 def _env(n: int, decay: float) -> np.ndarray:
@@ -38,18 +31,19 @@ def _sine_sweep(sr: int, n: int, f_start: float, f_end: float, tau: float) -> np
 
 
 def _main_kick(sr: int) -> np.ndarray:
-    n = int(sr * 0.16)
-    body = _sine_sweep(sr, n, 300, 55, 0.03) * _env(n, 0.14)
-    click = np.random.uniform(-1, 1, n) * _env(n, 0.008)
-    return np.tanh((body * 1.3 + click * 0.4) * 1.4)
+    """短く硬いキック(仕様書6章: Decay 80〜160ms, 基音50〜70Hz, クリック有り)。"""
+    n = int(sr * 0.15)
+    body = _sine_sweep(sr, n, 320, 58, 0.028) * _env(n, 0.13)
+    click = np.random.uniform(-1, 1, n) * _env(n, 0.006)
+    return np.tanh((body * 1.35 + click * 0.35) * 1.45)
 
 
 def _short_kick(sr: int) -> np.ndarray:
-    n = int(sr * 0.08)
-    body = _sine_sweep(sr, n, 220, 90, 0.015) * _env(n, 0.09)
-    sos = butter(2, 60, btype="highpass", fs=sr, output="sos")
-    body = sosfilt(sos, body)
-    return np.tanh(body * 1.2)
+    """補助キック(仕様書6章: HPF 60〜100Hz, Decay 40〜100ms, メインより高音)。"""
+    n = int(sr * 0.07)
+    body = _sine_sweep(sr, n, 240, 95, 0.013) * _env(n, 0.08)
+    sos = butter(2, 75, btype="highpass", fs=sr, output="sos")
+    return np.tanh(sosfilt(sos, body) * 1.2)
 
 
 def _snare(sr: int, pitch_semi: float = 0.0, decay: float = 0.11) -> np.ndarray:
@@ -62,44 +56,45 @@ def _snare(sr: int, pitch_semi: float = 0.0, decay: float = 0.11) -> np.ndarray:
 
 
 def _hat(sr: int, open_hat: bool = False) -> np.ndarray:
-    n = int(sr * (0.28 if open_hat else 0.05))
+    n = int(sr * (0.26 if open_hat else 0.04))
     noise = np.random.uniform(-1, 1, n)
     sos = butter(4, 7500, btype="highpass", fs=sr, output="sos")
     return sosfilt(sos, noise) * _env(n, 0.3 if open_hat else 0.05)
 
 
+def _shaker(sr: int) -> np.ndarray:
+    """16分ゴースト用の細かいシェイカー。ハットより柔らかく短い。"""
+    n = int(sr * 0.03)
+    noise = np.random.uniform(-1, 1, n)
+    sos = butter(4, [5000, 12000], btype="bandpass", fs=sr, output="sos")
+    return sosfilt(sos, noise) * _env(n, 0.12)
+
+
 def _cowbell(sr: int, pitch_semi: float) -> np.ndarray:
-    n = int(sr * 0.12)
+    """金属的な倍音を持つカウベル(仕様書5.7: High/Mid/Lowの3音色)。"""
+    n = int(sr * 0.11)
     f0 = 540 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
-    tone = np.sign(np.sin(2 * np.pi * f0 * t)) * 0.5 + np.sin(2 * np.pi * f0 * 1.48 * t) * 0.5
-    return np.tanh(tone * _env(n, 0.1) * 1.1)
+    # 非整数倍の2音を重ねて金属感を出す
+    tone = (np.sign(np.sin(2 * np.pi * f0 * t)) * 0.45
+            + np.sin(2 * np.pi * f0 * 1.48 * t) * 0.35
+            + np.sin(2 * np.pi * f0 * 2.67 * t) * 0.2)
+    sos = butter(2, 400, btype="highpass", fs=sr, output="sos")
+    return np.tanh(sosfilt(sos, tone) * _env(n, 0.09) * 1.15)
 
 
 def _woodblock(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
-    n = int(sr * 0.05)
-    f0 = 900 * (2 ** (pitch_semi / 12))
+    n = int(sr * 0.045)
+    f0 = 950 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
-    tone = np.sin(2 * np.pi * f0 * t)
-    return tone * _env(n, 0.03)
+    tone = np.sin(2 * np.pi * f0 * t) + 0.3 * np.sin(2 * np.pi * f0 * 2.4 * t)
+    return tone * _env(n, 0.028)
 
 
 def _tom(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
-    n = int(sr * 0.18)
-    body = _sine_sweep(sr, n, 220 * (2 ** (pitch_semi / 12)), 110 * (2 ** (pitch_semi / 12)), 0.05)
-    return body * _env(n, 0.15)
-
-
-_SHORT_KICK_STEPS = {2, 6, 7, 10, 14, 15}
-_WOODBLOCK_STEPS = {1, 3, 5, 9, 11, 13, 15}
-_COWBELL_STEPS = {2, 5, 7, 10, 13, 14}
-_TOM_STEPS = {2, 6, 7, 10, 13, 14}
-_HAT_CLOSED_STEPS = {0, 2, 4, 6, 8, 10, 12, 14}
-_HAT_OPEN_STEPS = {2, 6, 10, 14}
-_SNARE_STEPS = {4, 12}
-_MAIN_KICK_STEPS = {0, 4, 8, 12}
-
-_COWBELL_PITCHES = [7, 0, -5]  # High / Mid / Low (semitone)
+    n = int(sr * 0.17)
+    f = 2 ** (pitch_semi / 12)
+    return _sine_sweep(sr, n, 230 * f, 115 * f, 0.05) * _env(n, 0.14)
 
 
 def _mix_at(track: np.ndarray, sound: np.ndarray, pos: int, gain: float = 1.0) -> None:
@@ -110,75 +105,92 @@ def _mix_at(track: np.ndarray, sound: np.ndarray, pos: int, gain: float = 1.0) -
 
 
 def _snare_roll(sr: int, bpm: float) -> np.ndarray:
-    """仕様書7章: 1小節ビルド(8分->16分->16分->32分), ピッチ/ベロシティ上昇。"""
+    """1小節ビルド(仕様書7章): 8分->16分->16分->32分、ピッチとベロシティが上昇。"""
     beat_sec = 60.0 / bpm
-    n_samples = int(beat_sec * 4 * sr)
-    track = np.zeros(n_samples, dtype=np.float64)
+    track = np.zeros(int(beat_sec * 4 * sr), dtype=np.float64)
 
-    subdivisions = [2, 4, 4, 8]  # 拍ごとの打数(8分, 16分, 16分, 32分)
+    subdivisions = [2, 4, 4, 8]
     total_hits = sum(subdivisions)
     hit_index = 0
 
     for beat, n_hits in enumerate(subdivisions):
         for i in range(n_hits):
-            # 最後の拍(32分)の最終ヒットは無音にする(仕様書: 最後の1/4拍を無音)
-            if beat == 3 and i == n_hits - 1:
+            # 最後の1/4拍は無音にしてドロップへの間を作る
+            if beat == 3 and i >= n_hits - 2:
                 hit_index += 1
                 continue
             t = beat * beat_sec + i * (beat_sec / n_hits)
-            pos = int(t * sr)
             progress = hit_index / max(1, total_hits - 1)
-            pitch = progress * 7  # 0 -> +7 semitone
-            velocity = 0.35 + 0.65 * progress
-            _mix_at(track, _snare(sr, pitch_semi=pitch, decay=0.08), pos, gain=velocity)
+            _mix_at(track, _snare(sr, pitch_semi=progress * 7, decay=0.07),
+                    int(t * sr), gain=0.35 + 0.65 * progress)
             hit_index += 1
 
     return track
 
 
-def generate_drum_layers(bpm: float, arrangement, sr: int = 44100) -> np.ndarray:
-    """ArrangementGenerator の出力(バーごとの有効レイヤー)に従いドラムを合成する。"""
-    clock = ClockGrid(bpm, sr)
-    n_bars = len(arrangement)
-    total_samples = clock.bar_samples() * n_bars
-    track = np.zeros(total_samples, dtype=np.float64)
+def _tom_fill(sr: int, bpm: float) -> np.ndarray:
+    """4小節目用のタムフィル(仕様書17.1 BAR4)。後半2拍で下降するタム連打。"""
+    beat_sec = 60.0 / bpm
+    step_sec = beat_sec / 4
+    track = np.zeros(int(beat_sec * 4 * sr), dtype=np.float64)
 
-    kick_hits: list[int] = []  # サイドチェイン用にキック発音位置を記録
+    # 後半2拍(step 8〜15)を16分で下降
+    for i, step in enumerate(range(8, 16)):
+        pitch = 4 - i * 1.5
+        _mix_at(track, _tom(sr, pitch), int(step * step_sec * sr),
+                gain=0.6 + 0.05 * i)
+    return track
+
+
+def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100
+                          ) -> tuple[np.ndarray, list[int]]:
+    """Arrangementに従いドラムを合成し、(波形, キック発音位置) を返す。
+
+    キック位置はサイドチェイン(仕様書10.5)を掛けるために呼び出し側へ渡す。
+    """
+    clock = ClockGrid(bpm, sr)
+    total_samples = clock.bar_samples() * len(arrangement)
+    track = np.zeros(total_samples, dtype=np.float64)
+    kick_hits: list[int] = []
 
     for bar_info in arrangement:
         bar = bar_info["bar"]
         layers = bar_info["layers"]
         fill = bar_info.get("fill")
 
+        # フィル小節は通常パターンを差し替える
         if fill == "snare_roll":
-            pos = clock.step_to_sample(bar, 0)
-            roll = _snare_roll(sr, bpm)
-            _mix_at(track, roll, pos)
-            continue  # このバーは通常パターンを上書き
+            _mix_at(track, _snare_roll(sr, bpm), clock.step_to_sample(bar, 0))
+            continue
 
         for step in range(16):
             pos = clock.step_to_sample(bar, step)
 
-            if "main_kick" in layers and step in _MAIN_KICK_STEPS:
-                _mix_at(track, _main_kick(sr), pos)
+            if "main_kick" in layers and step in patterns.MAIN_KICK:
+                _mix_at(track, _main_kick(sr), pos, patterns.MAIN_KICK[step])
                 kick_hits.append(pos)
-            if "short_kick" in layers and step in _SHORT_KICK_STEPS:
-                velocity = 0.85 if step in (6, 14) else 0.6
-                _mix_at(track, _short_kick(sr), pos, gain=velocity)
-            if "snare" in layers and step in _SNARE_STEPS:
-                _mix_at(track, _snare(sr), pos)
-            if "hat_closed" in layers and step in _HAT_CLOSED_STEPS:
-                _mix_at(track, _hat(sr), pos, gain=0.5)
-            if "hat_open" in layers and step in _HAT_OPEN_STEPS:
-                _mix_at(track, _hat(sr, open_hat=True), pos, gain=0.4)
-            if "cowbell" in layers and step in _COWBELL_STEPS:
-                pitch = _COWBELL_PITCHES[step % len(_COWBELL_PITCHES)]
-                _mix_at(track, _cowbell(sr, pitch), pos, gain=0.8)
-            if "woodblock" in layers and step in _WOODBLOCK_STEPS:
-                _mix_at(track, _woodblock(sr), pos, gain=0.6)
-            if "tom" in layers and step in _TOM_STEPS:
-                pitch = -4 if step in (13, 14) else 0
-                _mix_at(track, _tom(sr, pitch), pos, gain=0.75)
+            if "short_kick" in layers and step in patterns.SHORT_KICK:
+                _mix_at(track, _short_kick(sr), pos, patterns.SHORT_KICK[step])
+            if "snare" in layers and step in patterns.SNARE:
+                _mix_at(track, _snare(sr), pos, patterns.SNARE[step])
+            if "hat_closed" in layers and step in patterns.HAT_CLOSED:
+                _mix_at(track, _hat(sr), pos, patterns.HAT_CLOSED[step])
+            if "hat_ghost" in layers and step in patterns.HAT_GHOST:
+                _mix_at(track, _shaker(sr), pos, patterns.HAT_GHOST[step])
+            if "hat_open" in layers and step in patterns.HAT_OPEN:
+                _mix_at(track, _hat(sr, open_hat=True), pos, patterns.HAT_OPEN[step])
+            if "cowbell" in layers and step in patterns.COWBELL:
+                gain, pitch = patterns.COWBELL[step]
+                _mix_at(track, _cowbell(sr, pitch), pos, gain)
+            if "woodblock" in layers and step in patterns.WOODBLOCK:
+                _mix_at(track, _woodblock(sr), pos, patterns.WOODBLOCK[step])
+            if "tom" in layers and step in patterns.TOM:
+                gain, pitch = patterns.TOM[step]
+                _mix_at(track, _tom(sr, pitch), pos, gain)
+
+        # タムフィルは通常パターンに重ねる(仕様書17.1 BAR4)
+        if fill == "tom":
+            _mix_at(track, _tom_fill(sr, bpm), clock.step_to_sample(bar, 0), 0.8)
 
     peak = np.max(np.abs(track)) or 1.0
     return (track / peak * 0.9).astype(np.float32), kick_hits
