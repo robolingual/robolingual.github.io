@@ -142,12 +142,49 @@ def _tom_fill(sr: int, bpm: float) -> np.ndarray:
     return track
 
 
-def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100
+class Groove:
+    """打点を機械的な等間隔・等音量から外すための揺らぎ。
+
+    完全にクオンタイズされ音量も一定だと「打ち込み臭さ」が強く出るため、
+    スウィング(16分の裏を後ろへずらす)、微小なタイミング揺れ、
+    ベロシティの揺れを掛ける。同一Seedなら同じ揺らぎを再現する。
+    """
+
+    def __init__(self, swing: float = 0.5, humanize_ms: float = 0.0,
+                 velocity_jitter: float = 0.0, seed: int = 0):
+        # swing=0.5 でストレート。0.5〜0.7 で跳ねる。
+        self.swing = swing
+        self.humanize_ms = humanize_ms
+        self.velocity_jitter = velocity_jitter
+        self._rng = np.random.default_rng(seed)
+
+    def offset_samples(self, step: int, step_sec: float, sr: int) -> int:
+        shift = 0.0
+        if step % 2 == 1:
+            # 16分裏を後ろへ。swing=0.5なら移動なし。
+            shift += (self.swing - 0.5) * 2 * step_sec
+        if self.humanize_ms:
+            shift += self._rng.normal(0, self.humanize_ms / 1000.0)
+        return int(shift * sr)
+
+    def gain(self, base: float) -> float:
+        if not self.velocity_jitter:
+            return base
+        g = base * (1.0 + self._rng.normal(0, self.velocity_jitter))
+        return float(np.clip(g, 0.05, 1.5))
+
+
+_STRAIGHT = Groove()
+
+
+def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100,
+                          groove: "Groove | None" = None
                           ) -> tuple[np.ndarray, list[int]]:
     """Arrangementに従いドラムを合成し、(波形, キック発音位置) を返す。
 
     キック位置はサイドチェイン(仕様書10.5)を掛けるために呼び出し側へ渡す。
     """
+    groove = groove or _STRAIGHT
     clock = ClockGrid(bpm, sr)
     total_samples = clock.bar_samples() * len(arrangement)
     track = np.zeros(total_samples, dtype=np.float64)
@@ -164,29 +201,32 @@ def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100
             continue
 
         for step in range(16):
-            pos = clock.step_to_sample(bar, step)
+            pos = clock.step_to_sample(bar, step) + groove.offset_samples(
+                step, clock.step_sec, sr)
+            pos = max(0, pos)
+            g = groove.gain
 
             if "main_kick" in layers and step in patterns.MAIN_KICK:
-                _mix_at(track, _main_kick(sr), pos, patterns.MAIN_KICK[step])
+                _mix_at(track, _main_kick(sr), pos, g(patterns.MAIN_KICK[step]))
                 kick_hits.append(pos)
             if "short_kick" in layers and step in patterns.SHORT_KICK:
-                _mix_at(track, _short_kick(sr), pos, patterns.SHORT_KICK[step])
+                _mix_at(track, _short_kick(sr), pos, g(patterns.SHORT_KICK[step]))
             if "snare" in layers and step in patterns.SNARE:
-                _mix_at(track, _snare(sr), pos, patterns.SNARE[step])
+                _mix_at(track, _snare(sr), pos, g(patterns.SNARE[step]))
             if "hat_closed" in layers and step in patterns.HAT_CLOSED:
-                _mix_at(track, _hat(sr), pos, patterns.HAT_CLOSED[step])
+                _mix_at(track, _hat(sr), pos, g(patterns.HAT_CLOSED[step]))
             if "hat_ghost" in layers and step in patterns.HAT_GHOST:
-                _mix_at(track, _shaker(sr), pos, patterns.HAT_GHOST[step])
+                _mix_at(track, _shaker(sr), pos, g(patterns.HAT_GHOST[step]))
             if "hat_open" in layers and step in patterns.HAT_OPEN:
-                _mix_at(track, _hat(sr, open_hat=True), pos, patterns.HAT_OPEN[step])
+                _mix_at(track, _hat(sr, open_hat=True), pos, g(patterns.HAT_OPEN[step]))
             if "cowbell" in layers and step in patterns.COWBELL:
                 gain, pitch = patterns.COWBELL[step]
-                _mix_at(track, _cowbell(sr, pitch), pos, gain)
+                _mix_at(track, _cowbell(sr, pitch), pos, g(gain))
             if "woodblock" in layers and step in patterns.WOODBLOCK:
-                _mix_at(track, _woodblock(sr), pos, patterns.WOODBLOCK[step])
+                _mix_at(track, _woodblock(sr), pos, g(patterns.WOODBLOCK[step]))
             if "tom" in layers and step in patterns.TOM:
                 gain, pitch = patterns.TOM[step]
-                _mix_at(track, _tom(sr, pitch), pos, gain)
+                _mix_at(track, _tom(sr, pitch), pos, g(gain))
 
         # タムフィルは通常パターンに重ねる(仕様書17.1 BAR4)
         if fill == "tom":
