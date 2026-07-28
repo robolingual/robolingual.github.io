@@ -142,6 +142,46 @@ def _tom_fill(sr: int, bpm: float) -> np.ndarray:
     return track
 
 
+# ブレイクが小節のどのstep(0始まり)から通常パターンを乗っ取るか
+_BREAK_TAKEOVER_STEP = {"small": 12, "large": 8}
+
+
+def _small_break(sr: int, bpm: float) -> np.ndarray:
+    """4小節目用の小さいブレイク。最後の1拍だけ下降タム+クラップで区切る。"""
+    step_sec = 60.0 / bpm / 4
+    track = np.zeros(int(step_sec * 4 * sr), dtype=np.float64)
+
+    # 4つの16分で下降するタム
+    for i in range(4):
+        _mix_at(track, _tom(sr, 3 - i * 2.5), int(i * step_sec * sr),
+                gain=0.75 + 0.05 * i)
+    # 頭にスネアを重ねてフィルの入りを明確にする
+    _mix_at(track, _snare(sr), 0, gain=0.7)
+    return track
+
+
+def _large_break(sr: int, bpm: float) -> np.ndarray:
+    """8小節目用の大きいブレイク。後半2拍を加速するスネアロールで、
+    最後は無音にしてループ頭へ落とす(仕様書7章)。"""
+    step_sec = 60.0 / bpm / 4
+    beat_sec = step_sec * 4
+    track = np.zeros(int(beat_sec * 2 * sr), dtype=np.float64)
+
+    # 3拍目: 16分 / 4拍目前半: 32分 / 4拍目最後: 無音
+    hits: list[tuple[float, float]] = []  # (時刻, 進行度)
+    for i in range(4):                       # 16分 x4
+        hits.append((i * step_sec, i / 11))
+    for i in range(6):                       # 32分 x6
+        hits.append((beat_sec + i * step_sec / 2, (4 + i) / 11))
+    # 残り(32分2つ分)は無音
+
+    for t, progress in hits:
+        _mix_at(track, _snare(sr, pitch_semi=progress * 7, decay=0.06),
+                int(t * sr), gain=0.4 + 0.6 * progress)
+
+    return track
+
+
 class Groove:
     """打点を機械的な等間隔・等音量から外すための揺らぎ。
 
@@ -194,13 +234,19 @@ def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100,
         bar = bar_info["bar"]
         layers = bar_info["layers"]
         fill = bar_info.get("fill")
+        brk = bar_info.get("break")
 
         # フィル小節は通常パターンを差し替える
         if fill == "snare_roll":
             _mix_at(track, _snare_roll(sr, bpm), clock.step_to_sample(bar, 0))
             continue
 
+        takeover = _BREAK_TAKEOVER_STEP.get(brk, 16)
+
         for step in range(16):
+            # ブレイク区間は通常パターンを鳴らさず、下でブレイクを重ねる
+            if step >= takeover:
+                continue
             # patterns.py は1始まり(DAWのステップ表示に合わせている)
             n = step + 1
             pos = clock.step_to_sample(bar, step) + groove.offset_samples(
@@ -233,6 +279,13 @@ def generate_drum_layers(bpm: float, arrangement: list[dict], sr: int = 44100,
         # タムフィルは通常パターンに重ねる(仕様書17.1 BAR4)
         if fill == "tom":
             _mix_at(track, _tom_fill(sr, bpm), clock.step_to_sample(bar, 0), 0.8)
+
+        if brk == "small":
+            _mix_at(track, _small_break(sr, bpm),
+                    clock.step_to_sample(bar, takeover))
+        elif brk == "large":
+            _mix_at(track, _large_break(sr, bpm),
+                    clock.step_to_sample(bar, takeover))
 
     peak = np.max(np.abs(track)) or 1.0
     return (track / peak * 0.9).astype(np.float32), kick_hits
