@@ -8,6 +8,7 @@ import numpy as np
 from scipy.signal import butter, sosfilt
 
 import patterns
+import tone
 from clock import ClockGrid
 
 # 有効化できるレイヤー名。ArrangementGeneratorが小節ごとに部分集合を渡す。
@@ -35,7 +36,7 @@ def _main_kick(sr: int) -> np.ndarray:
     n = int(sr * 0.15)
     body = _sine_sweep(sr, n, 320, 58, 0.028) * _env(n, 0.13)
     click = np.random.uniform(-1, 1, n) * _env(n, 0.006)
-    return np.tanh((body * 1.35 + click * 0.35) * 1.45)
+    return tone.saturate(body * 1.35 + click * 0.35, tone.DRIVE["main_kick"])
 
 
 def _short_kick(sr: int) -> np.ndarray:
@@ -43,23 +44,24 @@ def _short_kick(sr: int) -> np.ndarray:
     n = int(sr * 0.07)
     body = _sine_sweep(sr, n, 240, 95, 0.013) * _env(n, 0.08)
     sos = butter(2, 75, btype="highpass", fs=sr, output="sos")
-    return np.tanh(sosfilt(sos, body) * 1.2)
+    return tone.saturate(sosfilt(sos, body), tone.DRIVE["short_kick"])
 
 
 def _snare(sr: int, pitch_semi: float = 0.0, decay: float = 0.11) -> np.ndarray:
     n = int(sr * 0.15)
-    tone = _sine_sweep(sr, n, 190 * (2 ** (pitch_semi / 12)), 140, 0.02) * _env(n, decay * 0.6)
+    body = _sine_sweep(sr, n, 190 * (2 ** (pitch_semi / 12)), 140, 0.02) * _env(n, decay * 0.6)
     noise = np.random.uniform(-1, 1, n)
     sos = butter(4, [800, 6000], btype="bandpass", fs=sr, output="sos")
     noise = sosfilt(sos, noise) * _env(n, decay)
-    return np.tanh(tone * 0.6 + noise * 0.9)
+    return tone.saturate(body * 0.6 + noise * 0.9, tone.DRIVE["snare"])
 
 
 def _hat(sr: int, open_hat: bool = False) -> np.ndarray:
     n = int(sr * (0.26 if open_hat else 0.04))
     noise = np.random.uniform(-1, 1, n)
     sos = butter(4, 7500, btype="highpass", fs=sr, output="sos")
-    return sosfilt(sos, noise) * _env(n, 0.3 if open_hat else 0.05)
+    hat = sosfilt(sos, noise) * _env(n, 0.3 if open_hat else 0.05)
+    return tone.saturate(hat, tone.DRIVE["hat"])
 
 
 def _shaker(sr: int) -> np.ndarray:
@@ -67,34 +69,36 @@ def _shaker(sr: int) -> np.ndarray:
     n = int(sr * 0.03)
     noise = np.random.uniform(-1, 1, n)
     sos = butter(4, [5000, 12000], btype="bandpass", fs=sr, output="sos")
-    return sosfilt(sos, noise) * _env(n, 0.12)
+    return tone.saturate(sosfilt(sos, noise) * _env(n, 0.12), tone.DRIVE["shaker"])
 
 
 def _cowbell(sr: int, pitch_semi: float) -> np.ndarray:
-    """金属的な倍音を持つカウベル。基音は低めに取ってある。"""
+    """金属的な倍音を持つカウベル。基音は低めで、ハードクリップで歪ませる。"""
     n = int(sr * 0.11)
     f0 = 420 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
     # 非整数倍の2音を重ねて金属感を出す
-    tone = (np.sign(np.sin(2 * np.pi * f0 * t)) * 0.45
-            + np.sin(2 * np.pi * f0 * 1.48 * t) * 0.35
-            + np.sin(2 * np.pi * f0 * 2.67 * t) * 0.2)
+    osc = (np.sign(np.sin(2 * np.pi * f0 * t)) * 0.45
+           + np.sin(2 * np.pi * f0 * 1.48 * t) * 0.35
+           + np.sin(2 * np.pi * f0 * 2.67 * t) * 0.2)
     sos = butter(2, 300, btype="highpass", fs=sr, output="sos")
-    return np.tanh(sosfilt(sos, tone) * _env(n, 0.09) * 1.15)
+    # 歪ませてから減衰させる(先に減衰させると尻尾だけ歪みが薄くなる)
+    return tone.distort(sosfilt(sos, osc)) * _env(n, 0.09)
 
 
 def _woodblock(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
     n = int(sr * 0.045)
     f0 = 950 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
-    tone = np.sin(2 * np.pi * f0 * t) + 0.3 * np.sin(2 * np.pi * f0 * 2.4 * t)
-    return tone * _env(n, 0.028)
+    osc = np.sin(2 * np.pi * f0 * t) + 0.3 * np.sin(2 * np.pi * f0 * 2.4 * t)
+    return tone.saturate(osc * _env(n, 0.028), tone.DRIVE["woodblock"])
 
 
 def _tom(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
     n = int(sr * 0.17)
     f = 2 ** (pitch_semi / 12)
-    return _sine_sweep(sr, n, 230 * f, 115 * f, 0.05) * _env(n, 0.14)
+    body = _sine_sweep(sr, n, 230 * f, 115 * f, 0.05) * _env(n, 0.14)
+    return tone.saturate(body, tone.DRIVE["tom"])
 
 
 def _mix_at(track: np.ndarray, sound: np.ndarray, pos: int, gain: float = 1.0) -> None:
