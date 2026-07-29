@@ -7,6 +7,7 @@ Amen/ブレイクビーツ(9章)はサンプル素材前提のためMVPでは未
 import numpy as np
 from scipy.signal import butter, sosfilt
 
+import bus
 import patterns
 import tone
 from clock import ClockGrid
@@ -41,7 +42,12 @@ def _main_kick(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
     n = int(sr * 0.15 / (1 + pitch_semi / 24))
     body = _sine_sweep(sr, n, 320 * f, 58 * f, 0.028) * _env(n, 0.13)
     click = np.random.uniform(-1, 1, n) * _env(n, 0.006)
-    return tone.saturate(body * 1.35 + click * 0.35, tone.DRIVE["main_kick"])
+    raw = body * 1.4 + click * 0.45
+
+    # 速いアタックのコンプで頭を潰し、メイクアップで胴体を持ち上げる。
+    # 1発ごとに掛けるので、包絡線そのものが変形して密度が上がる。
+    hit = bus.compress(raw, sr, **tone.KICK_COMP)
+    return tone.saturate(hit, tone.DRIVE["main_kick"])
 
 
 def _short_kick(sr: int) -> np.ndarray:
@@ -62,11 +68,15 @@ def _snare(sr: int, pitch_semi: float = 0.0, decay: float = 0.11) -> np.ndarray:
 
 
 def _hat(sr: int, open_hat: bool = False) -> np.ndarray:
-    n = int(sr * (0.26 if open_hat else 0.04))
+    """ディストーションを掛けたハット。サスティンは短く切る。
+
+    歪ませてから減衰させる。順序が逆だと尾の部分だけ歪みが浅くなる。
+    """
+    n = int(sr * (0.22 if open_hat else 0.028))
     noise = np.random.uniform(-1, 1, n)
     sos = butter(4, 7500, btype="highpass", fs=sr, output="sos")
-    hat = sosfilt(sos, noise) * _env(n, 0.3 if open_hat else 0.05)
-    return tone.saturate(hat, tone.DRIVE["hat"])
+    hat = tone.distort(sosfilt(sos, noise), tone.HAT_DRIVE, tone.HAT_CLIP)
+    return hat * _env(n, 0.22 if open_hat else 0.035)
 
 
 def _shaker(sr: int) -> np.ndarray:
@@ -198,6 +208,17 @@ def _large_break(sr: int, bpm: float) -> np.ndarray:
     for beat_pos, pitch, gain in hits:
         _mix_at(track, _main_kick(sr, pitch_semi=pitch),
                 int(beat_pos * beat_sec * sr), gain)
+
+    # ハット「じゃんじゃんじゃんじゃん」: 各拍の表に1発ずつ。
+    # 「じゃん」の響きを出したいのでオープンハット。ピッチは変えない。
+    for beat_pos in range(4):
+        _mix_at(track, _hat(sr, open_hat=True),
+                int(beat_pos * beat_sec * sr), 0.55)
+
+    # カウベル「カンカン」: 最後の拍を半々に割って2発。
+    for off, pitch in ((0.0, 0), (0.5, -4)):
+        _mix_at(track, _cowbell(sr, pitch),
+                int((3.0 + off) * beat_sec * sr), 0.7)
 
     return track
 
