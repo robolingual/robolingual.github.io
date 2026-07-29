@@ -1178,6 +1178,12 @@ function seekRecordedFromPointer(event){
 // 直近の一定区間をループ再生しつつ、通常のミキサー出力を一時的にミュートするだけ。
 // ミキサー本体(mixerSources)は一切止めていないので、ミュートを解けば時間経過そのまま。
 let waveSlipPointerId=null,slipActive=false,slipSource=null,slipCurrentFraction=null;
+// スリップ開始の瞬間に切り取った音の写し。以降の刻み変更はこれを切り直すだけで、
+// リングバッファを読み直さない。
+// 理由: 開始と同時にmixerMasterをミュートする＝chaosBus経由のキャプチャには
+// 無音しか流れ込まなくなるため、capturePosを都度読むと無音を掴んでしまう。
+// またリングから直線バッファへ写しておけば、折り返し位置をまたぐ心配もなくなる。
+let slipSnapshot=null;
 const SLIP_ZONES=[[1,1/32,1/16],[1/2,1/4,1/8]]; // 上段/下段 × 左/中/右(手描き案の配置通り)
 function waveZoneFraction(clientX,clientY){
   const rect=wave.getBoundingClientRect();
@@ -1186,23 +1192,40 @@ function waveZoneFraction(clientX,clientY){
   const row=Math.min(1,Math.max(0,Math.floor((clientY-rect.top)/rect.height*2)));
   return SLIP_ZONES[row][col];
 }
+// スリップ開始時点までに録れている音を、リングから直線バッファへ写し取る。
+// 末尾が「触った瞬間の音」になるよう新しい順に詰めるので、
+// 以降はこのバッファの末尾から欲しい長さだけ遡れば刻みが作れる。
+function slipTakeSnapshot(){
+  const ctx=getAudioContext();
+  if(!captureData||!captureLen)return null;
+  const guard=Math.floor(.03*ctx.sampleRate); // 書き込み位置の直前は避ける
+  const len=captureLen-guard-1;
+  if(len<=2)return null;
+  const buf=ctx.createBuffer(1,len,ctx.sampleRate);
+  const out=buf.getChannelData(0);
+  const end=((capturePos-guard)%captureLen+captureLen)%captureLen;
+  for(let i=0;i<len;i++){
+    out[len-1-i]=captureData[((end-1-i)%captureLen+captureLen)%captureLen];
+  }
+  return buf;
+}
 function slipLoopWindow(fraction){
   const ctx=getAudioContext();
   const bpm=Math.max(1,(renderedBpm||Number(bpmInput.value)||120)*masterRate);
   const barSec=60/bpm*4;
+  const total=slipSnapshot?slipSnapshot.length:0;
   const dur=Math.max(.015,barSec*fraction);
-  const durSamples=Math.min(captureLen-2,Math.max(2,Math.floor(dur*ctx.sampleRate)));
-  const guard=Math.floor(.03*ctx.sampleRate);
-  let startSample=((capturePos-guard-durSamples)%captureLen+captureLen)%captureLen;
-  let safeSamples=durSamples;
-  if(startSample+durSamples>=captureLen)safeSamples=Math.max(2,captureLen-startSample-1); // リングの折り返しをまたがないよう安全側に切る
-  return{startSec:startSample/ctx.sampleRate,durSec:Math.max(.005,safeSamples/ctx.sampleRate)};
+  const durSamples=Math.min(total-1,Math.max(2,Math.floor(dur*ctx.sampleRate)));
+  // 写しの末尾＝触った瞬間。そこから欲しい長さだけ手前に遡る。
+  const startSample=Math.max(0,total-durSamples);
+  return{startSec:startSample/ctx.sampleRate,durSec:Math.max(.005,durSamples/ctx.sampleRate)};
 }
 function slipPlayWindow(fraction){
   const ctx=getAudioContext();
+  if(!slipSnapshot)return null;
   const{startSec,durSec}=slipLoopWindow(fraction);
   const src=ctx.createBufferSource();
-  src.buffer=captureBuffer;
+  src.buffer=slipSnapshot;
   src.loop=true;
   src.loopStart=startSec;
   src.loopEnd=startSec+durSec;
@@ -1215,6 +1238,8 @@ function slipStart(fraction){
   if(slipActive||!mixerRunning)return;
   getChaosBus(); // captureBufferを確実に用意しておく
   if(!captureBuffer)return;
+  slipSnapshot=slipTakeSnapshot(); // ミュートする前に、生きている音を写し取る
+  if(!slipSnapshot)return;
   slipActive=true;
   slipCurrentFraction=fraction;
   const ctx=getAudioContext(),t=ctx.currentTime;
@@ -1232,7 +1257,7 @@ function slipRetrigger(fraction){
 }
 function slipStop(){
   if(!slipActive)return;
-  slipActive=false;slipCurrentFraction=null;
+  slipActive=false;slipCurrentFraction=null;slipSnapshot=null;
   const ctx=getAudioContext(),t=ctx.currentTime;
   if(slipSource){
     const{src,gain}=slipSource;slipSource=null;
@@ -2265,11 +2290,18 @@ function fitScaleWrapInner(){
   const wrap=document.getElementById("scaleWrap");
   if(!wrap)return;
   wrap.style.transform="none";
+  wrap.style.marginBottom=""; // 前回の詰め分を戻してから実寸を測る
   const nativeW=wrap.offsetWidth,nativeH=wrap.offsetHeight;
   if(!nativeW||!nativeH)return;
   const availW=innerWidth-28,availH=innerHeight-28;
   const scale=Math.min(1,availW/nativeW,availH/nativeH);
   wrap.style.transform=`scale(${scale})`;
+  // transformは見た目を縮めるだけで、レイアウト上の箱は元寸のまま残る。
+  // その差分だけ親(.window)の下に余白ができ、背景色が白い帯として見えてしまうので、
+  // 負のmargin-bottomで親の下端を実際の見た目の高さまで引き上げる。
+  // 横方向には使わないこと。margin-leftを負にすると箱が縮むのではなく
+  // 要素自体が左へずれ、transform-origin(top center)ごと動いて中身が見切れる。
+  wrap.style.marginBottom=`${-nativeH*(1-scale)}px`;
 }
 // 中身の高さはフォント読み込みや画像描画で後から変わりうるので、
 // タイマーを何段も撒く代わりに ResizeObserver で実際の変化を拾う。
