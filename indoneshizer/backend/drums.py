@@ -88,7 +88,7 @@ def _hat(sr: int, open_hat: bool = False) -> np.ndarray:
 
 def _cowbell(sr: int, pitch_semi: float) -> np.ndarray:
     """金属的な倍音を持つカウベル。基音は低めで、ハードクリップで歪ませる。"""
-    n = int(sr * 0.11)
+    n = max(1, int(sr * tone.COWBELL_LEN_MS / 1000))
     f0 = 420 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
     # 非整数倍の2音を重ねて金属感を出す
@@ -97,15 +97,16 @@ def _cowbell(sr: int, pitch_semi: float) -> np.ndarray:
            + np.sin(2 * np.pi * f0 * 2.67 * t) * 0.2)
     sos = butter(2, 300, btype="highpass", fs=sr, output="sos")
     # 歪ませてから減衰させる(先に減衰させると尻尾だけ歪みが薄くなる)
-    return tone.distort(sosfilt(sos, osc)) * _env(n, 0.09)
+    return tone.distort(sosfilt(sos, osc)) * _env(n, (tone.COWBELL_TAU_MS / 1000) / (n / sr))
 
 
 def _woodblock(sr: int, pitch_semi: float = 0.0) -> np.ndarray:
-    n = int(sr * 0.045)
+    n = max(1, int(sr * tone.WOODBLOCK_LEN_MS / 1000))
     f0 = 950 * (2 ** (pitch_semi / 12))
     t = np.arange(n) / sr
     osc = np.sin(2 * np.pi * f0 * t) + 0.3 * np.sin(2 * np.pi * f0 * 2.4 * t)
-    return tone.saturate(osc * _env(n, 0.028), tone.DRIVE["woodblock"])
+    env = _env(n, (tone.WOODBLOCK_TAU_MS / 1000) / (n / sr))
+    return tone.saturate(osc * env, tone.DRIVE["woodblock"])
 
 
 def _tom(sr: int, pitch_semi: float = 0.0) -> np.ndarray:

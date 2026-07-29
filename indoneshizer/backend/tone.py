@@ -34,6 +34,13 @@ HAT_OPEN_LEN_MS = 220.0
 HAT_OPEN_TAU_MS = 48.0
 HAT_HPF_HZ = 4500.0          # 下げるほど胴が出る
 
+# カウベル/ウッドブロックの長さ。金属胴は本来よく響くので、
+# 短くしすぎると打点だけのクリックになる(ハットと同じ失敗)。
+COWBELL_LEN_MS = 220.0
+COWBELL_TAU_MS = 45.0
+WOODBLOCK_LEN_MS = 60.0
+WOODBLOCK_TAU_MS = 11.0
+
 # キックを凶悪にするためのコンプ設定。
 # アタックを速く・レシオを深くして頭を潰し、メイクアップで胴体を持ち上げる。
 KICK_COMP = {
