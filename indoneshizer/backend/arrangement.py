@@ -14,13 +14,13 @@ BAR9-16の"Full Drop"(シンセリード/ボーカルチョップ/Amen/DJカウ�
 """
 import random
 
-_LOOP_LAYERS = {"main_kick", "short_kick", "snare", "hat_closed", "hat_ghost", "cowbell"}
+_LOOP_LAYERS = {"main_kick", "short_kick", "snare", "hat_closed", "cowbell"}
 
 # style="build" 用。位置ごとに新規追加されるレイヤー(前の小節までの分は積み上がる)。
 _BUILD_ADDITIONS = {
     0: {"main_kick", "short_kick", "snare", "hat_closed"},
     1: {"cowbell"},
-    2: {"woodblock", "hat_ghost"},
+    2: {"woodblock"},
     3: {"tom"},
     4: set(),   # BAR5: bassの追加はbass_activeで表現
     5: set(),   # BAR6: bass variation

@@ -14,7 +14,6 @@ DRIVE = {
     "short_kick": 4.5,
     "snare": 5.0,
     "hat": 3.0,
-    "shaker": 2.6,
     "woodblock": 4.0,
     "tom": 4.5,
 }
@@ -36,11 +35,14 @@ KICK_COMP = {
     "makeup_db": 10.0,
 }
 
-# 全パートに薄く掛けるリバーブ(reverb.apply_reverb の引数)。
-# 190BPMでは残響を伸ばすと隙間が埋まるので短く保つ(仕様書11章)。
+# メインキックの基準ピッチ(半音)。全体を下げたいときにここを触る。
+KICK_PITCH_SEMI = -2.0
+
+# リバーブは全体に掛けると濁るので、カウベルにだけ掛ける。
+REVERB_LAYERS = ("cowbell",)
 REVERB = {
-    "wet": 0.13,
-    "decay_sec": 0.55,
+    "wet": 0.30,
+    "decay_sec": 0.6,
     "predelay_ms": 12.0,
 }
 
