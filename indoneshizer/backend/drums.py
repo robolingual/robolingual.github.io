@@ -70,15 +70,20 @@ def _snare(sr: int, pitch_semi: float = 0.0, decay: float = 0.11) -> np.ndarray:
 
 
 def _hat(sr: int, open_hat: bool = False) -> np.ndarray:
-    """ディストーションを掛けたハット。サスティンは短く切る。
+    """ディストーションを掛けたハット。
 
     歪ませてから減衰させる。順序が逆だと尾の部分だけ歪みが浅くなる。
+    長さと減衰は tone.py 側で調整する。
     """
-    n = int(sr * (0.22 if open_hat else 0.028))
+    len_ms = tone.HAT_OPEN_LEN_MS if open_hat else tone.HAT_CLOSED_LEN_MS
+    tau_ms = tone.HAT_OPEN_TAU_MS if open_hat else tone.HAT_CLOSED_TAU_MS
+    n = max(1, int(sr * len_ms / 1000))
+
     noise = np.random.uniform(-1, 1, n)
-    sos = butter(4, 7500, btype="highpass", fs=sr, output="sos")
+    sos = butter(4, tone.HAT_HPF_HZ, btype="highpass", fs=sr, output="sos")
     hat = tone.distort(sosfilt(sos, noise), tone.HAT_DRIVE, tone.HAT_CLIP)
-    return hat * _env(n, 0.22 if open_hat else 0.035)
+    # _env は n に対する比で時定数を取るので、msから換算する
+    return hat * _env(n, (tau_ms / 1000) / (n / sr))
 
 
 def _cowbell(sr: int, pitch_semi: float) -> np.ndarray:
