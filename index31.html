@@ -208,8 +208,12 @@ main{padding:16px;overflow:visible}
 #translate:disabled{color:#5a5a5a;box-shadow:0 3px 0 #8d8d8d;background:linear-gradient(#1c1c1c,#0c0c0c)}
 
 /* --- 波形スクリーン --- */
-#waveBox{flex:1;min-height:0;height:auto;aspect-ratio:921/470;border-radius:6px;overflow:hidden}
-#wave{width:100%;height:100%;border-radius:6px;touch-action:none}
+/* スリップループは波形を指でなぞって刻みを変える。ブラウザ既定の
+   スクロール・選択・長押しメニュー・ダブルタップ拡大が割り込むと、
+   途中でpointercancelが飛んでスライドが切れるので全て無効化する。
+   カオスパッド(#chaosSection)と同じ扱い。 */
+#waveBox{flex:1;min-height:0;height:auto;aspect-ratio:921/470;border-radius:6px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#wave{width:100%;height:100%;border-radius:6px;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 .preset-row{display:flex;gap:8px;margin:0}
 .preset-btn{flex:1;background:linear-gradient(#242424,#080808);color:#aaff00;border:1px solid #000;
      border-radius:7px;box-shadow:0 3px 0 #7e7e7e;font-size:10px;font-weight:700;padding:8px 2px}
@@ -1476,8 +1480,17 @@ wave.addEventListener("pointerdown",e=>{
 });
 wave.addEventListener("pointermove",e=>{
   if(waveSlipPointerId===null||e.pointerId!==waveSlipPointerId)return;
+  e.preventDefault();
   slipRetrigger(waveZoneFraction(e.clientX,e.clientY));
 });
+// touch-actionだけではiOS Safariがスクロールと判定してpointercancelを飛ばすことがあり、
+// その瞬間にスライドが切れる。スリップ中はtouchmoveを明示的に潰して判定させない。
+// passive:falseでないとpreventDefaultが効かない。
+waveBox.addEventListener("touchmove",e=>{
+  if(waveSlipPointerId!==null)e.preventDefault();
+},{passive:false});
+// 長押しの選択メニューもスライドを中断させるので出さない
+waveBox.addEventListener("contextmenu",e=>{if(waveSlipPointerId!==null)e.preventDefault()});
 window.addEventListener("pointerup",e=>{
   if(waveSlipPointerId!==null&&e.pointerId===waveSlipPointerId){
     waveSlipPointerId=null;
