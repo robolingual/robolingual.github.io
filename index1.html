@@ -422,6 +422,92 @@ main{padding:16px 16px 30px;position:relative}
 .window{background:#000;border-color:#000;box-shadow:none}
 body{box-shadow:none}
 
+/* --- パッドの Ex ------------------------------------------------------
+   HTMLは元から "Ex" だが、label に掛かる text-transform:uppercase が
+   "EX" に見せていた。この4つだけ大文字化を解く。                       */
+.switches label{text-transform:none}
+
+/* --- PAN の文字表示を消す(機能は据え置き) --- */
+.pan-title{display:none}
+
+/* --- パン: ロータリーノブ ---------------------------------------------
+   操作は今まで通り input[type=range] のまま(左右ドラッグ)で、
+   見た目だけノブにする。外側の .pan-unit は99px固定のままなので
+   周囲のレイアウトは動かない。
+     目盛り  8時 / 12時 / 4時 の3点 (12時を挟んで左右120度ずつ)
+     弧      12時起点。R方向は赤、L方向は青で振れた分を描く          */
+/* 縦フレックスの主軸サイズは flex-basis が height より優先されるため、
+   前段の flex:0 0 46px を打ち消しておかないと高さが46pxのまま潰れる。 */
+.pan-knob{position:relative;display:block;flex:0 0 76px;width:76px;height:76px;margin:0 auto;border-radius:50%}
+/* 目盛り。外周の帯にだけ見える(内側は本体の円が覆う) */
+.pan-knob::before{
+  content:"";position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from -1.2deg,
+    #d0d0d0 0 2.4deg, transparent 2.4deg 118.8deg,
+    #d0d0d0 118.8deg 121.2deg, transparent 121.2deg 238.8deg,
+    #d0d0d0 238.8deg 241.2deg, transparent 241.2deg 360deg)}
+/* 振れ量の弧。半径27〜32pxの帯にだけ見える(内側は本体が覆う) */
+.pk-arc{
+  position:absolute;inset:6px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(from var(--arc-from,0deg),
+    var(--arc-color,transparent) 0 var(--arc-sweep,0deg),
+    transparent var(--arc-sweep,0deg) 360deg)}
+/* 黒い本体(半径27px)。中央を覆い、外側にリングだけ残す */
+.pk-face{
+  position:absolute;inset:11px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 38% 28%,#3d3d3d 0%,#161616 46%,#050505 100%);
+  box-shadow:0 2px 5px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.16)}
+/* 指示線。本体の内側に収める(中心から8〜22px)。円の中心=上から38pxを軸に回す */
+.pk-mark{
+  position:absolute;left:50%;top:16px;width:3px;height:14px;margin-left:-1.5px;
+  background:#ededed;border-radius:2px;pointer-events:none;
+  transform-origin:50% 22px;transform:rotate(var(--ang,0deg))}
+.pk-l,.pk-r{position:absolute;bottom:4px;font:900 10px/1 Arial,Helvetica,sans-serif;color:#9a9a9a;pointer-events:none}
+.pk-l{left:1px}
+.pk-r{right:1px}
+/* 操作面。ノブ全体を覆う透明なrange */
+.pan-knob .pan-slider{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:ew-resize}
+
+/* --- REC: 16パッドと同じ作りで赤 ---------------------------------------
+   これまで .rec-led は文字色しか指定がなく、背景は .bay button の黒が
+   そのまま出ていた。パッド(.switches label)の消灯/点灯/無効の3状態を
+   そっくり赤に置き換える。                                            */
+.bay button.rec-led{
+  background:linear-gradient(#6e1a1a,#431010);
+  color:rgba(255,208,208,.78);
+  border:1px solid #1c0404;
+  box-shadow:0 3px 0 #7e7e7e,inset 0 1px 0 rgba(255,255,255,.10),inset 0 -6px 12px rgba(0,0,0,.35)}
+.bay button.rec-led:disabled{
+  background:linear-gradient(#3f1111,#260909);
+  color:rgba(255,208,208,.24);
+  box-shadow:0 3px 0 #8d8d8d,inset 0 -6px 12px rgba(0,0,0,.35)}
+.bay button.rec-led.lit{
+  background:linear-gradient(#ff5f5f,#d40000);
+  color:#280000;border-color:#6b0000;
+  box-shadow:0 0 20px rgba(255,45,45,.72),0 3px 0 #8f0000,inset 0 1px 0 rgba(255,255,255,.45)}
+
+/* --- テンポスライダー: 中央(1.0×)起点のゲージ --------------------------
+   accent-color は下端から溜まる作りで、1.0×が中央にあるこのスライダーには
+   合わない。トラックを自前で描き、1.0×から動かした向きと量だけ色を付ける。 */
+.speed-slider{-webkit-appearance:none;appearance:none;background:transparent}
+.speed-slider::-webkit-slider-runnable-track{
+  border-radius:5px;background:linear-gradient(to top,
+    #141414 0%,#141414 var(--gauge-lo,50%),
+    #aaff00 var(--gauge-lo,50%),#aaff00 var(--gauge-hi,50%),
+    #141414 var(--gauge-hi,50%),#141414 100%);
+  box-shadow:inset 0 0 0 1px #000}
+.speed-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:#aaff00;border:1px solid #4d7300;box-shadow:0 0 8px rgba(170,255,0,.7)}
+.speed-slider::-moz-range-track{
+  border-radius:5px;background:linear-gradient(to top,
+    #141414 0%,#141414 var(--gauge-lo,50%),
+    #aaff00 var(--gauge-lo,50%),#aaff00 var(--gauge-hi,50%),
+    #141414 var(--gauge-hi,50%),#141414 100%)}
+.speed-slider::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;border:1px solid #4d7300;
+  background:#aaff00;box-shadow:0 0 8px rgba(170,255,0,.7)}
+
 </style>
 </head>
 <body>
@@ -457,16 +543,16 @@ body{box-shadow:none}
   <div class="pan-col">
     <div class="pan-title">PAN</div>
     <div class="pan-unit">
-      <label class="pan-knob" aria-label="ninja pan"><input type="range" class="pan-slider" data-mode="ninja" min="-100" max="100" step="1" value="0"></label>
+      <label class="pan-knob" aria-label="ninja pan"><span class="pk-arc"></span><span class="pk-face"></span><span class="pk-mark"></span><span class="pk-l">L</span><span class="pk-r">R</span><input type="range" class="pan-slider" data-mode="ninja" min="-100" max="100" step="1" value="0"></label>
     </div>
     <div class="pan-unit">
-      <label class="pan-knob" aria-label="killer pan"><input type="range" class="pan-slider" data-mode="killer" min="-100" max="100" step="1" value="0"></label>
+      <label class="pan-knob" aria-label="killer pan"><span class="pk-arc"></span><span class="pk-face"></span><span class="pk-mark"></span><span class="pk-l">L</span><span class="pk-r">R</span><input type="range" class="pan-slider" data-mode="killer" min="-100" max="100" step="1" value="0"></label>
     </div>
     <div class="pan-unit">
-      <label class="pan-knob" aria-label="banker pan"><input type="range" class="pan-slider" data-mode="banker" min="-100" max="100" step="1" value="0"></label>
+      <label class="pan-knob" aria-label="banker pan"><span class="pk-arc"></span><span class="pk-face"></span><span class="pk-mark"></span><span class="pk-l">L</span><span class="pk-r">R</span><input type="range" class="pan-slider" data-mode="banker" min="-100" max="100" step="1" value="0"></label>
     </div>
     <div class="pan-unit">
-      <label class="pan-knob" aria-label="witch pan"><input type="range" class="pan-slider" data-mode="witch" min="-100" max="100" step="1" value="0"></label>
+      <label class="pan-knob" aria-label="witch pan"><span class="pk-arc"></span><span class="pk-face"></span><span class="pk-mark"></span><span class="pk-l">L</span><span class="pk-r">R</span><input type="range" class="pan-slider" data-mode="witch" min="-100" max="100" step="1" value="0"></label>
     </div>
   </div>
   <div class="bay bay-main">
@@ -1105,6 +1191,19 @@ function getModePanner(mode){
   }
   return modePanners[mode];
 }
+// --- パンノブの見た目更新 ---------------------------------------------
+// 値(-100〜100)を、12時を中心に左右120度ずつの回転へ写す。
+// 弧は12時起点で、R方向(右)は赤、L方向(左)は青。
+function updatePanKnob(el){
+  const knob=el.closest(".pan-knob");
+  if(!knob)return;
+  const ang=(Number(el.value)||0)/100*120;
+  const sweep=Math.abs(ang);
+  knob.style.setProperty("--ang",ang+"deg");
+  knob.style.setProperty("--arc-sweep",sweep+"deg");
+  knob.style.setProperty("--arc-from",(ang<0?-sweep:0)+"deg");
+  knob.style.setProperty("--arc-color",sweep<.5?"transparent":(ang>0?"#ff3b3b":"#3b8bff"));
+}
 document.querySelectorAll(".pan-slider").forEach(el=>{
   el.addEventListener("input",()=>{
     const mode=el.dataset.mode,v=Number(el.value)/100;
@@ -1113,7 +1212,9 @@ document.querySelectorAll(".pan-slider").forEach(el=>{
       const ctx=getAudioContext();
       modePanners[mode].pan.setTargetAtTime(v,ctx.currentTime,.02);
     }
+    updatePanKnob(el);
   });
+  updatePanKnob(el); // 初期表示(センター)
 });
 function stopRecordedPlayback(keepWave=true,resetOffset=true){
   if(performanceSource){try{performanceSource.onended=null;performanceSource.stop()}catch(_){}try{performanceSource.disconnect()}catch(_){}}
@@ -1362,6 +1463,7 @@ function setMasterRate(rate){
 function resetMasterRate(){
   speedSlider.value="0";
   setMasterRate(1);
+  updateSpeedGauge(); // 値を直接書き換えたときはinputが飛ばないので、自分で描き直す
 }
 
 function applyMixerGains(){
@@ -1540,7 +1642,16 @@ window.addEventListener("pointercancel",e=>{
     slipStop();
   }
 });
-speedSlider.addEventListener("input",()=>setMasterRate(sliderToRate(speedSlider.value)));
+// --- テンポゲージの更新 -----------------------------------------------
+// 値は -1000(下端=3.0×) 〜 +1000(上端=⅓×) で、0が中央の1.0×。
+// 下端を0%とした位置を出し、中央50%との間だけを塗る。
+function updateSpeedGauge(){
+  const p=((Number(speedSlider.value)||0)+1000)/2000*100;
+  speedSlider.style.setProperty("--gauge-lo",Math.min(50,p)+"%");
+  speedSlider.style.setProperty("--gauge-hi",Math.max(50,p)+"%");
+}
+updateSpeedGauge();
+speedSlider.addEventListener("input",()=>{setMasterRate(sliderToRate(speedSlider.value));updateSpeedGauge()});
 speedSlider.addEventListener("dblclick",resetMasterRate);
 speedResetLabel.addEventListener("click",resetMasterRate);
 
@@ -2206,16 +2317,23 @@ function toMono(buffer){const m=new Float32Array(buffer.length);for(let ch=0;ch<
 function encodeWav(samples,sr){const buffer=new ArrayBuffer(44+samples.length*2),view=new DataView(buffer);writeString(view,0,"RIFF");view.setUint32(4,36+samples.length*2,true);writeString(view,8,"WAVE");writeString(view,12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sr,true);view.setUint32(28,sr*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);writeString(view,36,"data");view.setUint32(40,samples.length*2,true);let o=44;for(let i=0;i<samples.length;i++,o+=2){const s=Math.max(-1,Math.min(1,samples[i]));view.setInt16(o,s<0?s*32768:s*32767,true)}return new Blob([view],{type:"audio/wav"})}
 function writeString(view,o,t){for(let i=0;i<t.length;i++)view.setUint8(o+i,t.charCodeAt(i))}
 function drawGrid(ctx,width,height){
+  // 16列×8行。8小節ぶんなので2列で1小節、4キャラなので2行で1キャラ。
+  // 全部同じ細さだと目が滑るため、小節の変わり目(縦)とキャラの変わり目(横)を太くする。
   ctx.fillStyle="#080008";ctx.fillRect(0,0,width,height);
   const ratio=devicePixelRatio||1;
-  ctx.strokeStyle="rgba(170,255,0,.30)";ctx.lineWidth=Math.max(1,ratio*.65);
   const xStep=width/16,yStep=height/8;
+
+  ctx.strokeStyle="rgba(170,255,0,.20)";ctx.lineWidth=Math.max(1,ratio*.6);
   ctx.beginPath();
-  for(let x=0;x<=width+.5;x+=xStep){ctx.moveTo(Math.round(x)+.5,0);ctx.lineTo(Math.round(x)+.5,height)}
-  for(let y=0;y<=height+.5;y+=yStep){ctx.moveTo(0,Math.round(y)+.5);ctx.lineTo(width,Math.round(y)+.5)}
+  for(let i=0;i<=16;i++){const x=Math.round(i*xStep)+.5;ctx.moveTo(x,0);ctx.lineTo(x,height)}
+  for(let j=0;j<=8;j++){const y=Math.round(j*yStep)+.5;ctx.moveTo(0,y);ctx.lineTo(width,y)}
   ctx.stroke();
-  ctx.strokeStyle="rgba(170,255,0,.58)";ctx.lineWidth=Math.max(1,ratio);
-  ctx.beginPath();ctx.moveTo(0,height/2+.5);ctx.lineTo(width,height/2+.5);ctx.stroke();
+
+  ctx.strokeStyle="rgba(170,255,0,.72)";ctx.lineWidth=Math.max(2,ratio*1.9);
+  ctx.beginPath();
+  for(let i=0;i<=16;i+=2){const x=Math.round(i*xStep)+.5;ctx.moveTo(x,0);ctx.lineTo(x,height)}
+  for(let j=0;j<=8;j+=2){const y=Math.round(j*yStep)+.5;ctx.moveTo(0,y);ctx.lineTo(width,y)}
+  ctx.stroke();
 }
 function drawEmptyWave(){const ctx=resizeCanvas(wave);drawGrid(ctx,wave.width,wave.height)}
 function drawWave(){const ctx=resizeCanvas(wave),width=wave.width,height=wave.height,data=mono,step=Math.max(1,Math.floor(data.length/width));drawGrid(ctx,width,height);/* Safari経由の動画抽出は振幅が小さく見える場合があるため、表示だけ自動拡大する。音声データ自体は変更しない。 */let displayPeak=0;const sampleStep=Math.max(1,Math.floor(data.length/12000));for(let i=0;i<data.length;i+=sampleStep)displayPeak=Math.max(displayPeak,Math.abs(data[i]));const displayGain=displayPeak>1e-6?Math.min(24,.9/displayPeak):1;ctx.strokeStyle="#aaff00";ctx.lineWidth=Math.max(1.4,(devicePixelRatio||1)*1.25);ctx.beginPath();for(let x=0;x<width;x++){let min=1,max=-1,start=x*step,end=Math.min(data.length,start+step);for(let i=start;i<end;i++){const v=Math.max(-1,Math.min(1,data[i]*displayGain));if(v<min)min=v;if(v>max)max=v}ctx.moveTo(x,(1+min)*.5*height);ctx.lineTo(x,(1+max)*.5*height)}ctx.stroke();ctx.strokeStyle="rgba(170,255,0,.42)";ctx.lineWidth=Math.max(1,devicePixelRatio||1);for(const a of attacks){const x=a/data.length*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke()}const bpm=clamp(Number(bpmInput.value)||110,60,260),beatSec=60/bpm,dur=data.length/sourceBuffer.sampleRate;ctx.strokeStyle="rgba(170,255,0,.72)";for(let t=0;t<dur;t+=beatSec){const x=t/dur*width;ctx.beginPath();ctx.moveTo(x,height-18);ctx.lineTo(x,height);ctx.stroke()}}
@@ -2272,11 +2390,13 @@ function drawMixerGrid(){
     ctx.fillStyle=color;ctx.font="900 10px Arial,Helvetica,sans-serif";
     ctx.fillText(variant?variant.toUpperCase():"–",4,y0+12); // 現在選択中のA/B/Cラベル
 
-    ctx.strokeStyle="rgba(255,255,255,.08)";ctx.lineWidth=1;
+    // キャラの変わり目。細いと段の切れ目が読めないので太めに引く
+    ctx.strokeStyle="rgba(255,255,255,.34)";ctx.lineWidth=Math.max(2,(devicePixelRatio||1)*1.9);
     ctx.beginPath();ctx.moveTo(0,y1);ctx.lineTo(width,y1);ctx.stroke();
   });
 
-  ctx.strokeStyle="rgba(170,255,0,.18)";ctx.lineWidth=1; // 8小節分の区切り線
+  ctx.strokeStyle="rgba(170,255,0,.55)"; // 小節の変わり目
+  ctx.lineWidth=Math.max(2,(devicePixelRatio||1)*1.9);
   for(let b=1;b<8;b++){
     const x=(b/8)*width;
     ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke();
