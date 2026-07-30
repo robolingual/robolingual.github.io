@@ -310,10 +310,12 @@ main{padding:16px;overflow:visible}
   border-radius:4px;display:flex;align-items:center;padding-left:9px;
   font:700 10px/1 Arial,Helvetica,sans-serif;letter-spacing:.10em;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.09)}
-.mode[data-mode="ninja"]  .row-band{background:linear-gradient(90deg,#175757,#0a2727);color:#3ad9d9}
-.mode[data-mode="killer"] .row-band{background:linear-gradient(90deg,#5c1d18,#290d0b);color:#e6483c}
-.mode[data-mode="banker"] .row-band{background:linear-gradient(90deg,#574717,#27200a);color:#d9b23a}
-.mode[data-mode="witch"]  .row-band{background:linear-gradient(90deg,#50175c,#240a29);color:#c93ae6}
+/* 帯は明るめに。文字は色を乗せず白で統一する。
+   終端はスキンへ馴染ませたいので、始端より一段暗く落としている。 */
+.mode[data-mode="ninja"]  .row-band{background:linear-gradient(90deg,#22b0b0,#0e4a4a);color:#fff}
+.mode[data-mode="killer"] .row-band{background:linear-gradient(90deg,#c73a2e,#521712);color:#fff}
+.mode[data-mode="banker"] .row-band{background:linear-gradient(90deg,#c09328,#4e3d10);color:#fff}
+.mode[data-mode="witch"]  .row-band{background:linear-gradient(90deg,#a531bd,#43124d);color:#fff}
 
 /* --- PAN列はノブが帯より前に出るよう重ね順を上げる --- */
 .pan-col{z-index:2}
