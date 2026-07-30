@@ -459,6 +459,15 @@ body{align-items:flex-start;padding:0}
    "EX" に見せていた。この4つだけ大文字化を解く。                       */
 .switches label{text-transform:none}
 
+/* --- Ex は点灯ではなく点滅 --------------------------------------------
+   単発トリガーなので状態として点灯させ続けない。A/B/Cの点灯色をそのまま
+   借りて、押した瞬間だけ光らせる。                                     */
+.switches label.ex-flash{
+  background:linear-gradient(#c4ff5a,#74d400);
+  color:#0c2400;
+  border-color:#3d6b00;
+  box-shadow:0 0 20px rgba(150,255,40,.72),0 3px 0 #5f8f00,inset 0 1px 0 rgba(255,255,255,.5)}
+
 /* --- PAN の文字表示を消す(機能は据え置き) --- */
 .pan-title{display:none}
 
@@ -1531,6 +1540,7 @@ function triggerOneShotD(mode){
   const buffer=rendered[mode]&&rendered[mode].d;
   if(!buffer)return;
   lastExTrigger[mode]=performance.now();
+  flashEx(mode);
   const ctx=getAudioContext();
   if(ctx.state==="suspended")ctx.resume();
   // 連打で同じDが再度押された場合、前の再生を即座に(クリックが出ない範囲で最速に)打ち切って
@@ -1556,18 +1566,32 @@ function triggerOneShotD(mode){
   const rate=Math.max(.05,masterRate);
   const realSeconds=buffer.duration/rate;
   source.start(ctx.currentTime);
-  const input=document.getElementById(mode+"D");
-  const clearLight=()=>{if(input)input.checked=false};
   source.onended=()=>{
     try{source.disconnect()}catch(_){}
     try{gain.disconnect()}catch(_){}
     if(activeDVoices[mode]&&activeDVoices[mode].source===source)delete activeDVoices[mode];
-    clearLight();
   };
-  setTimeout(clearLight,(realSeconds*1000)+60); // フェイルセーフ
+  void realSeconds;
 }
+// Exは押しっぱなしの状態ではなく単発のトリガーなので、点灯させて残さず一瞬光らせる。
+const EX_FLASH_MS=110;
+function flashEx(mode){
+  const label=document.querySelector(`label[for="${mode}D"]`);
+  if(!label)return;
+  label.classList.remove("ex-flash");
+  void label.offsetWidth; // 連打でも毎回頭から光らせるため、一度リセットして再適用する
+  label.classList.add("ex-flash");
+  clearTimeout(label._exFlashTimer);
+  label._exFlashTimer=setTimeout(()=>label.classList.remove("ex-flash"),EX_FLASH_MS);
+}
+// changeではなくclickで拾う。ラジオは既にチェック済みだと再タップでchangeが飛ばず、
+// 連打が丸ごと無反応になっていた。状態としては保持しないので毎回チェックを外す。
 document.querySelectorAll('.switches input[type="radio"][value="d"]').forEach(el=>{
-  el.addEventListener("change",()=>{if(el.checked)triggerOneShotD(el.name.replace(/D$/,""))});
+  el.addEventListener("click",()=>{
+    if(el.disabled)return;
+    el.checked=false;
+    triggerOneShotD(el.name.replace(/D$/,""));
+  });
 });
 
 function stopMixer(reset=false){
