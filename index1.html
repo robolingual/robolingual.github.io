@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.64</title>
+<title>Robolingual v0.9.65</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -561,7 +561,7 @@ body{align-items:flex-start;padding:0}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.64</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.65</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1703,7 +1703,19 @@ document.querySelectorAll(".switches label").forEach(label=>{
     const a=document.activeElement;
     return !!(a&&a.matches&&a.matches(FIELDS));
   };
-  const free=()=>{if(!editing())vp.content=FREE};
+  // 拡大は止まっても、キーボードが開くと iOS は入力欄を見せようとして
+  // 画面ごと上へ送る。この画面はスクロールしない作りで、送られたままだと
+  // タイトルバーが隠れて戻らないので、入力を終えたら位置を戻す。
+  const resetScroll=()=>{
+    window.scrollTo(0,0);
+    const se=document.scrollingElement;if(se)se.scrollTop=0;
+    if(document.body)document.body.scrollTop=0;
+  };
+  const free=()=>{if(!editing()){vp.content=FREE;resetScroll()}};
+  // キーボードが閉じた瞬間も拾う。focusout だけだと取りこぼすことがある。
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize",()=>{if(!editing())resetScroll()});
+  }
   // フォーカスが決まる前に入れないと間に合わないので pointerdown で先回りする。
   document.addEventListener("pointerdown",e=>{
     if(!(e.target instanceof Element)||!e.target.closest(FIELDS))return;
