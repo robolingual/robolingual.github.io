@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.73</title>
+<title>Robolingual v0.9.74</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -593,7 +593,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.73</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.74</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1389,6 +1389,8 @@ const SLIP_ALIGN_OFFSET_MS=0;
 // 波形上でサンプリング箇所を光らせるための控え。
 // slipBandEnd/Dur はループ内の秒、slipLoopAnchor は今の周回が始まった時刻。
 let slipBandEnd=-1,slipBandDur=0,slipLoopAnchor=0;
+// 押すたびに作り直す4拍ぶんの素材と、その頭がループ内のどこ(秒)か。
+let slipSample=null,slipSampleElapsed=-1,slipBarSec=2;
 const SLIP_ZONES=[[1,1/32,1/16],[1/2,1/4,1/8]]; // 上段/下段 × 左/中/右(手描き案の配置通り)
 function waveZoneFraction(clientX,clientY){
   const rect=wave.getBoundingClientRect();
@@ -1414,47 +1416,56 @@ function slipTakeSnapshot(){
   }
   return buf;
 }
-function slipLoopWindow(fraction){
+// 押した位置から4拍(1小節)ぶんを切り出し、これを固定の素材にする。
+// 刻みは「この素材の頭から何ぶん鳴らすか」を決めるだけなので、刻みを変えても
+// 音の出頭が動かない。以前は終端を区切りに合わせて後ろへ伸ばしていたため、
+// 刻みを粗くするほど古い音へ遡っていた。
+// 取るのは直前の小節線から1小節ぶん。録り貯めが届かない範囲は無音のままにする。
+function slipBuildSample(){
   const ctx=getAudioContext(),sr=ctx.sampleRate;
+  if(!slipSnapshot)return false;
   const bpm=Math.max(1,(renderedBpm||Number(bpmInput.value)||120)*masterRate);
-  const barSec=60/bpm*4;
-  const total=slipSnapshot?slipSnapshot.length:0;
-  const dur=Math.max(.015,barSec*fraction);
-
-  // 拍のグリッドへ吸着させる。
-  // 指を置いた瞬間は拍と無関係なので、そこを終端にするとループの頭に
-  // アタックが来ず立ち上がりが鈍る。直近の区切りまで終端を戻して、
-  // キックなどの頭がループの先頭に乗るようにする。
-  let trim=0;
+  slipBarSec=60/bpm*4;
+  const snapLenSec=slipSnapshot.length/sr;
+  // 写しの末尾が slipSnapshotElapsed にあたる。そこから逆算して読み出し位置を出す。
+  let bandStart=-1,readStart=snapLenSec-slipBarSec;
   if(slipSnapshotElapsed>=0){
-    const gridSec=barSec*fraction;
-    if(gridSec>0)trim=Math.floor((slipSnapshotElapsed%gridSec)*sr);
+    const bar=Math.floor(slipSnapshotElapsed/slipBarSec)*slipBarSec; // 直前の小節線
+    const startElapsed=bar-slipBarSec;                               // その1小節ぶん手前から
+    readStart=snapLenSec-(slipSnapshotElapsed-startElapsed);
+    // ループの頭の近くで押すと出頭がマイナス秒(前の周回の終わり)になる。
+    // 読み出しはそのままでよいが、帯の位置はループ内へ畳んでおかないと
+    // 負の値になり、描画が止まってしまう。
+    const loopDur=mixerLoopDuration||0;
+    bandStart=loopDur>0?((startElapsed%loopDur)+loopDur)%loopDur:startElapsed;
   }
-  let durSamples=Math.max(2,Math.floor(dur*sr));
-  let end=total-trim;
-  if(end<durSamples+1){end=total} // 端数を引くと素材が足りない場合は吸着しない
-  durSamples=Math.min(durSamples,Math.max(2,end-1));
-  const startSample=Math.max(0,end-durSamples);
-  return{startSec:startSample/sr,durSec:Math.max(.005,durSamples/sr)};
+  const len=Math.max(2,Math.round(slipBarSec*sr));
+  const out=ctx.createBuffer(1,len,sr);
+  const dst=out.getChannelData(0),srcData=slipSnapshot.getChannelData(0);
+  const base=Math.round(readStart*sr);
+  for(let i=0;i<len;i++){
+    const j=base+i;
+    dst[i]=(j>=0&&j<srcData.length)?srcData[j]:0; // 録り貯めの外は無音で埋める
+  }
+  slipSample=out;
+  slipSampleElapsed=bandStart;
+  return true;
 }
 function slipPlayWindow(fraction){
   const ctx=getAudioContext();
-  if(!slipSnapshot)return null;
-  const{startSec,durSec}=slipLoopWindow(fraction);
+  if(!slipSample)return null;
+  // 常に素材の頭から鳴らす。刻みは終わりの位置だけを決める。
+  const durSec=Math.max(.015,Math.min(slipBarSec,slipBarSec*fraction));
   const src=ctx.createBufferSource();
-  src.buffer=slipSnapshot;
+  src.buffer=slipSample;
   src.loop=true;
-  src.loopStart=startSec;
-  src.loopEnd=startSec+durSec;
+  src.loopStart=0;
+  src.loopEnd=durSec;
   const gain=ctx.createGain();gain.gain.value=1;
   src.connect(gain).connect(getChaosOut());
   const t0=ctx.currentTime;
-  src.start(t0,startSec);
-  // 光らせる帯の位置を出す。写しの末尾がループ内の slipSnapshotElapsed に
-  // あたるので、そこから「窓の終わりが末尾より手前にある分」を引き戻す。
-  // 吸着を諦めた場合もこの引き算なら正しい位置になる。
-  const tailGap=slipSnapshot.length/ctx.sampleRate-(startSec+durSec);
-  slipBandEnd=slipSnapshotElapsed>=0?slipSnapshotElapsed-tailGap:-1;
+  src.start(t0,0);
+  slipBandEnd=slipSampleElapsed>=0?slipSampleElapsed+durSec:-1;
   slipBandDur=durSec;
   slipLoopAnchor=t0;
   return{src,gain};
@@ -1473,6 +1484,7 @@ function slipStart(fraction){
       slipSnapshotElapsed=((t-mixerLoopStartTime)%loopDur+loopDur)%loopDur;
     }else slipSnapshotElapsed=-1;
   }
+  if(!slipBuildSample())return;
   slipActive=true;
   slipCurrentFraction=fraction;
   const ctx=getAudioContext(),t=ctx.currentTime;
@@ -1491,7 +1503,7 @@ function slipRetrigger(fraction){
 function slipStop(){
   if(!slipActive)return;
   slipActive=false;slipCurrentFraction=null;slipSnapshot=null;slipSnapshotElapsed=-1;
-  slipBandEnd=-1;slipBandDur=0;
+  slipBandEnd=-1;slipBandDur=0;slipSample=null;slipSampleElapsed=-1;
   const ctx=getAudioContext(),t=ctx.currentTime;
   if(slipSource){
     const{src,gain}=slipSource;slipSource=null;
