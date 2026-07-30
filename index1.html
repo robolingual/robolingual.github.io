@@ -2477,7 +2477,18 @@ function fitScaleWrap(){
   fittingScaleWrap=true;
   try{fitScaleWrapInner()}finally{fittingScaleWrap=false}
 }
+// 文字入力中(ソフトキーボードが出ている間)は測り直さない。
+// キーボードで縦が縮んだ状態に合わせて拡大率を決めてしまうと、
+// 閉じたあとも小さいままになりやすい。離れたところで測り直す。
+function isTypingInInput(){
+  const a=document.activeElement;
+  return !!a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA");
+}
+document.addEventListener("focusout",e=>{
+  if(e.target&&e.target.tagName==="INPUT")setTimeout(fitScaleWrap,120);
+});
 function fitScaleWrapInner(){
+  if(isTypingInInput())return;
   // 中身は固定pxの基準サイズのまま組み、scale-wrap全体をinnerWidth/innerHeightに収まるよう
   // 一括でズームする（screen.heightは埋め込みプレビュー環境で実際の表示枠と食い違うため使わない）。
   const wrap=document.getElementById("scaleWrap");
@@ -2488,7 +2499,15 @@ function fitScaleWrapInner(){
   if(!nativeW||!nativeH)return;
   // bodyの余白は0にしたので、引くのは .window の枠線(左右/上下 2pxずつ)だけ。
   // ここを引かないと拡大後の幅が画面をわずかに超えて横スクロールが出る。
-  const availW=innerWidth-4,availH=innerHeight-4;
+  //
+  // innerWidth/innerHeight は使わないこと。iOS Safari ではピンチやフォーカス
+  // 拡大の状態が反映され、ソフトキーボードでも変わる。一度ズームすると
+  // 縮んだ幅を読んで小さく描き、その結果が次の測定にも残るため、
+  // リロードしても小さいままという抜け出せない状態になる。
+  // documentElement.clientWidth/Height はレイアウトビューポートで、
+  // ズームにもキーボードにも動かされない。
+  const doc=document.documentElement;
+  const availW=doc.clientWidth-4,availH=doc.clientHeight-4;
   const scale=Math.min(1,availW/nativeW,availH/nativeH);
   wrap.style.transform=`scale(${scale})`;
   // transformは見た目を縮めるだけで、レイアウト上の箱は元寸(720px)のまま残る。
