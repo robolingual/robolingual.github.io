@@ -1338,6 +1338,12 @@ let waveSlipPointerId=null,slipActive=false,slipSource=null,slipCurrentFraction=
 // 無音しか流れ込まなくなるため、capturePosを都度読むと無音を掴んでしまう。
 // またリングから直線バッファへ写しておけば、折り返し位置をまたぐ心配もなくなる。
 let slipSnapshot=null;
+// 写しの末尾が、8小節ループの中のどの位置(秒)にあたるか。-1は不明で吸着しない。
+let slipSnapshotElapsed=-1;
+// キャプチャ経路には遅れがあり、写しの末尾は「今」より少し前を指す。
+// その差をここで補正する。プラスにすると吸着位置が前へ、マイナスで後ろへ動く。
+// 実測できない値なので、耳で合わせて調整する前提の数値。
+const SLIP_ALIGN_OFFSET_MS=0;
 const SLIP_ZONES=[[1,1/32,1/16],[1/2,1/4,1/8]]; // 上段/下段 × 左/中/右(手描き案の配置通り)
 function waveZoneFraction(clientX,clientY){
   const rect=wave.getBoundingClientRect();
@@ -1364,15 +1370,27 @@ function slipTakeSnapshot(){
   return buf;
 }
 function slipLoopWindow(fraction){
-  const ctx=getAudioContext();
+  const ctx=getAudioContext(),sr=ctx.sampleRate;
   const bpm=Math.max(1,(renderedBpm||Number(bpmInput.value)||120)*masterRate);
   const barSec=60/bpm*4;
   const total=slipSnapshot?slipSnapshot.length:0;
   const dur=Math.max(.015,barSec*fraction);
-  const durSamples=Math.min(total-1,Math.max(2,Math.floor(dur*ctx.sampleRate)));
-  // 写しの末尾＝触った瞬間。そこから欲しい長さだけ手前に遡る。
-  const startSample=Math.max(0,total-durSamples);
-  return{startSec:startSample/ctx.sampleRate,durSec:Math.max(.005,durSamples/ctx.sampleRate)};
+
+  // 拍のグリッドへ吸着させる。
+  // 指を置いた瞬間は拍と無関係なので、そこを終端にするとループの頭に
+  // アタックが来ず立ち上がりが鈍る。直近の区切りまで終端を戻して、
+  // キックなどの頭がループの先頭に乗るようにする。
+  let trim=0;
+  if(slipSnapshotElapsed>=0){
+    const gridSec=barSec*fraction;
+    if(gridSec>0)trim=Math.floor((slipSnapshotElapsed%gridSec)*sr);
+  }
+  let durSamples=Math.max(2,Math.floor(dur*sr));
+  let end=total-trim;
+  if(end<durSamples+1){end=total} // 端数を引くと素材が足りない場合は吸着しない
+  durSamples=Math.min(durSamples,Math.max(2,end-1));
+  const startSample=Math.max(0,end-durSamples);
+  return{startSec:startSample/sr,durSec:Math.max(.005,durSamples/sr)};
 }
 function slipPlayWindow(fraction){
   const ctx=getAudioContext();
@@ -1394,6 +1412,14 @@ function slipStart(fraction){
   if(!captureBuffer)return;
   slipSnapshot=slipTakeSnapshot(); // ミュートする前に、生きている音を写し取る
   if(!slipSnapshot)return;
+  // 写しの末尾がループ内のどこにあたるかを控える。刻みごとの吸着量はこれから出す。
+  {
+    const ac=getAudioContext(),loopDur=mixerLoopDuration||0;
+    if(loopDur>0){
+      const t=ac.currentTime-SLIP_ALIGN_OFFSET_MS/1000;
+      slipSnapshotElapsed=((t-mixerLoopStartTime)%loopDur+loopDur)%loopDur;
+    }else slipSnapshotElapsed=-1;
+  }
   slipActive=true;
   slipCurrentFraction=fraction;
   const ctx=getAudioContext(),t=ctx.currentTime;
@@ -1411,7 +1437,7 @@ function slipRetrigger(fraction){
 }
 function slipStop(){
   if(!slipActive)return;
-  slipActive=false;slipCurrentFraction=null;slipSnapshot=null;
+  slipActive=false;slipCurrentFraction=null;slipSnapshot=null;slipSnapshotElapsed=-1;
   const ctx=getAudioContext(),t=ctx.currentTime;
   if(slipSource){
     const{src,gain}=slipSource;slipSource=null;
