@@ -2804,21 +2804,38 @@ function drawMixerGrid(){
   // ループ1周ぶんかけて真っ白から透明へ落ちる。刻みが細かいほど周期が短く
   // なるので、自然と点滅に見える。
   // ただし最小の1/32は落ちきる前に次が来て点きっぱなしに見えるため、
-  // そこだけ1/16の速さの赤にして、他と区別できるようにする。
+  // そこだけ1/16の速さにする。
   if(slipActive&&slipBandDur>0&&slipBandEnd>=0){
     const finest=slipCurrentFraction<=1/32+1e-9;
     const period=finest?slipBandDur*2:slipBandDur;
-    const phase=(((ac.currentTime-slipLoopAnchor)%period)+period)%period/period;
+    const cycles=(ac.currentTime-slipLoopAnchor)/period;
+    const phase=((cycles%1)+1)%1;
     const a=1-phase; // 頭で最も明るく、1周かけて消える
-    ctx.fillStyle=finest?`rgba(255,64,64,${(a*.8).toFixed(3)})`
-                        :`rgba(255,255,255,${(a*.72).toFixed(3)})`;
     const endX=((slipBandEnd%loopDur+loopDur)%loopDur)/loopDur*width;
     const w=Math.max(2,(slipBandDur/loopDur)*width);
     const startX=endX-w;
-    if(startX<0){ // ループの頭をまたぐ帯は2つに割って描く
-      ctx.fillRect(0,0,endX,height);
-      ctx.fillRect(width+startX,0,-startX,height);
-    }else ctx.fillRect(startX,0,w,height);
+    const band=fill=>{
+      ctx.fillStyle=fill;
+      if(startX<0){ // ループの頭をまたぐ帯は2つに割って描く
+        ctx.fillRect(0,0,endX,height);
+        ctx.fillRect(width+startX,0,-startX,height);
+      }else ctx.fillRect(startX,0,w,height);
+    };
+    if(finest){
+      // 1/32は帯が数pxしかなく、塗るだけでは見えない。白い芯のまわりに
+      // 色をにじませて、発光しているように見せる。
+      // にじみの色は折り返しごとに赤と黄を入れ替えて、さらに目に留まりやすくする。
+      const c=Math.floor(cycles)%2===0?"255,64,64":"255,208,64";
+      const cx=endX-w/2,glow=Math.max(16,w*7);
+      for(const ox of [-width,0,width]){ // ループ端で切れないよう左右にも置く
+        const g=ctx.createLinearGradient(cx+ox-glow,0,cx+ox+glow,0);
+        g.addColorStop(0,`rgba(${c},0)`);
+        g.addColorStop(.5,`rgba(${c},${(a*.9).toFixed(3)})`);
+        g.addColorStop(1,`rgba(${c},0)`);
+        ctx.fillStyle=g;ctx.fillRect(cx+ox-glow,0,glow*2,height);
+      }
+      band(`rgba(255,255,255,${(a*.95).toFixed(3)})`); // 白い芯
+    }else band(`rgba(255,255,255,${(a*.72).toFixed(3)})`);
   }
 
   ctx.strokeStyle="rgba(170,255,0,.55)"; // 小節の変わり目
