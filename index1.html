@@ -437,6 +437,11 @@ html,body{overscroll-behavior:none}
    縦は中央寄せをやめて上端から並べる(スマホでは横幅で拡大率が決まり、
    下に余りが出るため)。横方向は中央寄せのまま。                       */
 body{align-items:flex-start;padding:0}
+
+/* 拡大の基点を左上へ。中央基点のままだと、縮めた見た目が元寸(720px)の箱の
+   真ん中に浮き、箱の左端が画面外へはみ出す。左上基点にしておけば、
+   下の負マージンで箱を実寸まで詰めたときに見た目と箱がそのまま重なる。 */
+.scale-wrap{transform-origin:top left}
 .window,.window *{
   touch-action:none;
   -webkit-user-select:none;user-select:none;
@@ -2474,7 +2479,7 @@ function fitScaleWrapInner(){
   const wrap=document.getElementById("scaleWrap");
   if(!wrap)return;
   wrap.style.transform="none";
-  wrap.style.marginBottom=""; // 前回の詰め分を戻してから実寸を測る
+  wrap.style.marginBottom="";wrap.style.marginRight=""; // 前回の詰め分を戻してから実寸を測る
   const nativeW=wrap.offsetWidth,nativeH=wrap.offsetHeight;
   if(!nativeW||!nativeH)return;
   // bodyの余白は0にしたので、引くのは .window の枠線(左右/上下 2pxずつ)だけ。
@@ -2482,11 +2487,12 @@ function fitScaleWrapInner(){
   const availW=innerWidth-4,availH=innerHeight-4;
   const scale=Math.min(1,availW/nativeW,availH/nativeH);
   wrap.style.transform=`scale(${scale})`;
-  // transformは見た目を縮めるだけで、レイアウト上の箱は元寸のまま残る。
-  // その差分だけ親(.window)の下に余白ができ、背景色が白い帯として見えてしまうので、
-  // 負のmargin-bottomで親の下端を実際の見た目の高さまで引き上げる。
-  // 横方向には使わないこと。margin-leftを負にすると箱が縮むのではなく
-  // 要素自体が左へずれ、transform-origin(top center)ごと動いて中身が見切れる。
+  // transformは見た目を縮めるだけで、レイアウト上の箱は元寸(720px)のまま残る。
+  // 詰めないと親(.window)が常に724px幅のままになり、狭い画面では箱が左右に
+  // はみ出す(390px幅で -167〜557)。基点を左上にしてあるので、
+  // 右と下の負マージンで箱を見た目の大きさちょうどまで縮められる。
+  // 左マージンは使わないこと。負にすると箱が縮むのではなく要素自体が左へずれる。
+  wrap.style.marginRight=`${-nativeW*(1-scale)}px`;
   wrap.style.marginBottom=`${-nativeH*(1-scale)}px`;
 }
 // 中身の高さはフォント読み込みや画像描画で後から変わりうるので、
