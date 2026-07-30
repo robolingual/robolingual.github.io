@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.74</title>
+<title>Robolingual v0.9.75</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -593,7 +593,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.74</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.75</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1430,8 +1430,11 @@ function slipBuildSample(){
   // 写しの末尾が slipSnapshotElapsed にあたる。そこから逆算して読み出し位置を出す。
   let bandStart=-1,readStart=snapLenSec-slipBarSec;
   if(slipSnapshotElapsed>=0){
-    const bar=Math.floor(slipSnapshotElapsed/slipBarSec)*slipBarSec; // 直前の小節線
-    const startElapsed=bar-slipBarSec;                               // その1小節ぶん手前から
+    // 押した時点から遡って4拍ぶん。終わりは直前の拍に合わせるので、
+    // 出頭も拍の上に乗り、キックなどの頭がループの先頭に来る。
+    const beatSec=slipBarSec/4;
+    const end=Math.floor(slipSnapshotElapsed/beatSec)*beatSec;       // 直前の拍
+    const startElapsed=end-slipBarSec;                               // そこから過去4拍
     readStart=snapLenSec-(slipSnapshotElapsed-startElapsed);
     // ループの頭の近くで押すと出頭がマイナス秒(前の周回の終わり)になる。
     // 読み出しはそのままでよいが、帯の位置はループ内へ畳んでおかないと
