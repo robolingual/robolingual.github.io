@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
 <title>Robolingual v0.9.63</title>
 <style>
@@ -432,7 +432,9 @@ body{box-shadow:none}
    画面は scale-wrap でビューポートに収める作りでそもそもスクロールしない
    (body は overflow:hidden)ので、全面で切って差し支えない。
    数値入力だけは選択・編集できるよう戻す。                             */
-html,body{overscroll-behavior:none}
+/* パネルの外(下の黒い余白)も body なので、ここを外すとそこだけ
+   ダブルタップ拡大が生きてしまう。html/body ごと切る。 */
+html,body{touch-action:none;overscroll-behavior:none}
 
 /* --- 画面いっぱい・上詰め ----------------------------------------------
    余白14pxのぶん横が痩せていたので0にして、画面の横幅を使い切る。
