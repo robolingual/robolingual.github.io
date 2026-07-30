@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.66</title>
+<title>Robolingual v0.9.67</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -561,7 +561,7 @@ body{align-items:flex-start;padding:0}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.66</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.67</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1703,18 +1703,29 @@ document.querySelectorAll(".switches label").forEach(label=>{
     const a=document.activeElement;
     return !!(a&&a.matches&&a.matches(FIELDS));
   };
-  // 拡大は止まっても、キーボードが開くと iOS は入力欄を見せようとして
-  // 画面ごと上へ送る。この画面はスクロールしない作りで、送られたままだと
-  // タイトルバーが隠れて戻らないので、入力を終えたら位置を戻す。
+  // キーボードが開くと表示領域が縮み、その間だけページがスクロールできる
+  // 状態になる。iOS はそこで入力欄を見せようと上へ送り、閉じたあとも戻し
+  // 損ねる。入力中に送られるのは構わないが、終えたら元の位置に戻す。
   const resetScroll=()=>{
     window.scrollTo(0,0);
     const se=document.scrollingElement;if(se)se.scrollTop=0;
     if(document.body)document.body.scrollTop=0;
   };
-  const free=()=>{if(!editing()){vp.content=FREE;resetScroll()}};
+  // 1回だけでは戻らない。閉じるアニメーションの途中で戻しても、そのあと
+  // iOS が位置を入れ直してしまうため、閉じ切るまで何度か戻す。
+  let resetTimers=[];
+  const resetScrollHard=()=>{
+    resetTimers.forEach(clearTimeout);
+    resetTimers=[0,100,250,450,700,1000,1400].map(ms=>setTimeout(()=>{
+      if(!editing())resetScroll();
+    },ms));
+  };
+  const free=()=>{if(!editing()){vp.content=FREE;resetScrollHard()}};
   // キーボードが閉じた瞬間も拾う。focusout だけだと取りこぼすことがある。
   if(window.visualViewport){
-    window.visualViewport.addEventListener("resize",()=>{if(!editing())resetScroll()});
+    const vv=window.visualViewport;
+    vv.addEventListener("resize",()=>{if(!editing())resetScrollHard()});
+    vv.addEventListener("scroll",()=>{if(!editing())resetScroll()});
   }
   // フォーカスが決まる前に入れないと間に合わないので pointerdown で先回りする。
   document.addEventListener("pointerdown",e=>{
