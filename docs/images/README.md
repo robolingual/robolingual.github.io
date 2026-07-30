@@ -24,7 +24,7 @@
 | `04-pan.png` | 左側のPANノブ4つ |
 | `05-bpm.png` | 16パッドがテンキーに変わった状態 |
 | `06-speed.png` | 右側の速度スライダー |
-| `07-chaos.png` | カオスパッド。HOLD / 0 LOCK 込み |
+| `07-chaos.png` | 八卦盤。HOLD / 0 LOCK 込み |
 | `08-slip.png` | 波形を押さえて白い帯が出ている状態 |
 | `09-player.png` | PLAY / STOP / REC / SAVE |
 
