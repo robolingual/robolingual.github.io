@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.75</title>
+<title>Robolingual v0.9.76</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -593,7 +593,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.75</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.76</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1497,11 +1497,20 @@ function slipStart(fraction){
   slipSource=slipPlayWindow(fraction);
 }
 function slipRetrigger(fraction){
-  if(!slipActive||fraction===slipCurrentFraction)return;
+  if(!slipActive||fraction===slipCurrentFraction||!slipSource)return;
   slipCurrentFraction=fraction;
-  const old=slipSource;
-  slipSource=slipPlayWindow(fraction);
-  if(old){try{old.src.stop()}catch(_){}try{old.src.disconnect()}catch(_){}try{old.gain.disconnect()}catch(_){}}
+  const ctx=getAudioContext();
+  const durSec=Math.max(.015,Math.min(slipBarSec,slipBarSec*fraction));
+  // 音源は作り直さず、ループの終わりだけ動かす。
+  // 作り直すと刻みを変えるたびに頭から鳴り直すので、細かく動かしたときに
+  // いちいち引っかかって聞こえていた。終わりを動かすだけなら次の折り返しから
+  // 効くので、鳴りが途切れない。出頭(loopStart=0)は動かないままになる。
+  slipSource.src.loopEnd=durSec;
+  // 今の再生位置が新しい終わりより後ろなら、すぐ折り返す。
+  // 光らせる周期の基準も、その折り返しに合わせておく。
+  if(ctx.currentTime-slipLoopAnchor>=durSec)slipLoopAnchor=ctx.currentTime;
+  slipBandDur=durSec;
+  slipBandEnd=slipSampleElapsed>=0?slipSampleElapsed+durSec:-1;
 }
 function slipStop(){
   if(!slipActive)return;
