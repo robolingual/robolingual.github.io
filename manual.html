@@ -154,7 +154,8 @@ figure{
   margin:1.6rem 0;border:1px solid var(--rule);background:var(--paper-2);
   border-radius:2px;overflow:hidden;
 }
-figure img{display:block;width:100%;height:auto}
+figure img{display:block;margin:0 auto;width:auto;height:auto;
+  max-width:100%;max-height:min(70vh,520px)}
 figcaption{
   font-family:var(--font-mono);font-size:.72rem;letter-spacing:.05em;
   color:var(--ink-2);padding:.65rem .85rem;border-top:1px solid var(--rule);
@@ -225,7 +226,7 @@ html{scroll-behavior:smooth}
 </header>
 
 <div class="title-block">
-  <h1>音源をひとつ渡すと、4人が別々の流儀で演奏し直します</h1>
+  <h1>誰でもカンタン！スマホひとつでロボ語トーク。</h1>
   <p class="lede">ROBOLINGUAL は、手持ちの音声や動画から「ロボ語」を生成し、その場で組み替えて演奏するブラウザ上の楽器です。インストールは不要で、スマートフォン・タブレット・PC のいずれでも動作します。</p>
   <div class="meta">
     <span>対応環境<b>iOS / Android / PC ブラウザ</b></span>
@@ -274,16 +275,26 @@ html{scroll-behavior:smooth}
         <li>波形が表示されたら読み込み完了です。</li>
       </ol>
       <p>対応形式は WAV / MP3 / M4A / AAC / MP4 / M4V / MOV です。</p>
+      <figure class="empty" id="fig1">
+        <img src="docs/images/01-source.png" alt="CHOOSE と PRESET">
+        <div class="plate">図 1 — 読み込みまわり</div>
+        <figcaption><span class="fn">図 1</span><span>画面右上の <span class="ctl">CHOOSE</span> と <span class="ctl">TRANSLATE</span>、その下に BPM。</span></figcaption>
+      </figure>
       <h3>動画から音声を取り出す</h3>
       <p>動画を選ぶと、波形の中のボタンが <span class="ctl">READ VIDEO</span> に変わります。これを押すと音声の取り出しが始まります。</p>
       <p>取り出しは<strong>動画を最後まで再生しながら</strong>行うため、<strong>動画の長さぶん時間がかかります</strong>。進み具合は画面の中央に％で出ます。終わるまで画面を開いたままにしてください。</p>
       <div class="note">
         <p>iPhone の写真アプリから選んだ場合、ファイルが渡されるまで少し待つことがあります。<span class="ctl">WAITING...</span> と出ている間はそのままお待ちください。</p>
       </div>
-      <figure class="empty" id="fig1">
-        <img src="docs/images/01-source.png" alt="CHOOSE と PRESET">
-        <div class="plate">図 1 — 読み込みまわり</div>
-        <figcaption><span class="fn">図 1</span><span>画面右上の <span class="ctl">CHOOSE</span> と <span class="ctl">TRANSLATE</span>、および波形下のプリセット。</span></figcaption>
+      <figure class="empty" id="fig2">
+        <img src="docs/images/01b-readvideo.png" alt="READ VIDEO">
+        <div class="plate">図 2 — READ VIDEO</div>
+        <figcaption><span class="fn">図 2</span><span>動画を選ぶと、波形の中のボタンが <span class="ctl">READ VIDEO</span> に変わる。</span></figcaption>
+      </figure>
+      <figure class="empty" id="fig3">
+        <img src="docs/images/01c-progress.png" alt="取り出し中の進捗">
+        <div class="plate">図 3 — 取り出し中の進捗</div>
+        <figcaption><span class="fn">図 3</span><span>取り出し中は、画面の中央に％が出る。</span></figcaption>
       </figure>
     </section>
 
@@ -295,10 +306,10 @@ html{scroll-behavior:smooth}
         <p><strong>生成前に BPM を決めておいてください。</strong>生成されるロボ語のテンポは、そのときの BPM を基準に決まります。</p>
       </div>
       <p><span class="ctl">↑RESTART</span> は、生成したパターンを保ったままループを頭から鳴らし直します。</p>
-      <figure class="empty" id="fig2">
+      <figure class="empty" id="fig4">
         <img src="docs/images/02-translate.png" alt="生成後の波形">
-        <div class="plate">図 2 — 生成後の波形</div>
-        <figcaption><span class="fn">図 2</span><span>生成が終わった状態。検出されたアタック数が表示される。</span></figcaption>
+        <div class="plate">図 4 — 生成後の波形</div>
+        <figcaption><span class="fn">図 4</span><span>生成が終わった状態。検出されたアタック数が表示される。</span></figcaption>
       </figure>
     </section>
 
@@ -339,10 +350,10 @@ html{scroll-behavior:smooth}
       <div class="note">
         <p><strong>どう組み替えても頭がずれません。</strong></p>
       </div>
-      <figure class="empty" id="fig3">
+      <figure class="empty" id="fig5">
         <img src="docs/images/03-pads.png" alt="16パッド">
-        <div class="plate">図 3 — 16パッド</div>
-        <figcaption><span class="fn">図 3</span><span>16パッド。縦がキャラクター、横がバリエーション。</span></figcaption>
+        <div class="plate">図 5 — 16パッド</div>
+        <figcaption><span class="fn">図 5</span><span>16パッド。縦がキャラクター、横がバリエーション。</span></figcaption>
       </figure>
     </section>
 
@@ -350,10 +361,10 @@ html{scroll-behavior:smooth}
       <div class="sec-head"><span class="sec-n">04</span><h2 class="sec-t">PAN</h2></div>
       <p>画面左の4つのノブで、キャラクターごとの左右の定位を決めます。上から NINJA / KILLER / BANKER / WITCH の順です。ノブはドラッグして回します。</p>
       <p>ループ（A・B・C）もワンショット（Ex）も、同じキャラクターであれば同じ位置から鳴ります。4人を左右に散らすと、それぞれの動きが聴き分けやすくなります。</p>
-      <figure class="empty" id="fig4">
+      <figure class="empty" id="fig6">
         <img src="docs/images/04-pan.png" alt="PANノブ">
-        <div class="plate">図 4 — PAN</div>
-        <figcaption><span class="fn">図 4</span><span>キャラクターごとのPANノブ。</span></figcaption>
+        <div class="plate">図 6 — PAN</div>
+        <figcaption><span class="fn">図 6</span><span>キャラクターごとのPANノブ。</span></figcaption>
       </figure>
     </section>
 
@@ -370,10 +381,10 @@ html{scroll-behavior:smooth}
       </ul>
       <h3>PC</h3>
       <p><span class="ctl">BPM</span> の欄をクリックして、そのまま打ち込めます。テンキーは出ません。</p>
-      <figure class="empty" id="fig5">
+      <figure class="empty" id="fig7">
         <img src="docs/images/05-bpm.png" alt="パッドのテンキー">
-        <div class="plate">図 5 — パッドのテンキー</div>
-        <figcaption><span class="fn">図 5</span><span>16パッドがテンキーに切り替わった状態。</span></figcaption>
+        <div class="plate">図 7 — パッドのテンキー</div>
+        <figcaption><span class="fn">図 7</span><span>16パッドがテンキーに切り替わった状態。</span></figcaption>
       </figure>
     </section>
 
@@ -386,10 +397,10 @@ html{scroll-behavior:smooth}
         <li>ダブルクリックで <span class="ctl">1.0×</span> に戻ります。</li>
       </ul>
       <p>上部には現在の倍率と、換算後の BPM が表示されます。</p>
-      <figure class="empty" id="fig6">
+      <figure class="empty" id="fig8">
         <img src="docs/images/06-speed.png" alt="速度スライダー">
-        <div class="plate">図 6 — MASTER SPEED</div>
-        <figcaption><span class="fn">図 6</span><span>再生速度スライダー。</span></figcaption>
+        <div class="plate">図 8 — MASTER SPEED</div>
+        <figcaption><span class="fn">図 8</span><span>再生速度スライダー。</span></figcaption>
       </figure>
     </section>
 
@@ -409,10 +420,10 @@ html{scroll-behavior:smooth}
       <div class="note">
         <p><span class="ctl">0 LOCK</span> で軽く歪ませた場所をゼロ地点にしておくと、<strong>その状態を基準に出たり戻ったりできます。</strong></p>
       </div>
-      <figure class="empty" id="fig7">
+      <figure class="empty" id="fig9">
         <img src="docs/images/07-chaos.png" alt="八卦盤">
-        <div class="plate">図 7 — 八卦盤</div>
-        <figcaption><span class="fn">図 7</span><span>八卦盤と <span class="ctl">HOLD</span> / <span class="ctl">0 LOCK</span>。</span></figcaption>
+        <div class="plate">図 9 — 八卦盤</div>
+        <figcaption><span class="fn">図 9</span><span>八卦盤と <span class="ctl">HOLD</span> / <span class="ctl">0 LOCK</span>。</span></figcaption>
       </figure>
     </section>
 
@@ -435,10 +446,10 @@ html{scroll-behavior:smooth}
       <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。刻みが細かいほど点滅が速くなります。</p>
       <p>最も細かい <span class="ctl">1/32</span> だけは、白い芯のまわりが<strong>赤と黄に交互に発光します。</strong></p>
       <p>指を離すと元の演奏に戻ります。時間は止まっていないので、離した時点から続きます。</p>
-      <figure class="empty" id="fig8">
+      <figure class="empty" id="fig10">
         <img src="docs/images/08-slip.png" alt="スリップループ">
-        <div class="plate">図 8 — スリップループ</div>
-        <figcaption><span class="fn">図 8</span><span>波形を押さえ、切り取り範囲が光っている状態。</span></figcaption>
+        <div class="plate">図 10 — スリップループ</div>
+        <figcaption><span class="fn">図 10</span><span>波形を押さえ、切り取り範囲が光っている状態。</span></figcaption>
       </figure>
     </section>
 
@@ -466,10 +477,10 @@ html{scroll-behavior:smooth}
         </table>
       </div>
       <p>狙った方を保存したいときは、先にその側を一度操作してから <span class="ctl">SAVE</span> を押してください。</p>
-      <figure class="empty" id="fig9">
+      <figure class="empty" id="fig11">
         <img src="docs/images/09-player.png" alt="プレイヤー">
-        <div class="plate">図 9 — プレイヤー</div>
-        <figcaption><span class="fn">図 9</span><span><span class="ctl">PLAY</span> / <span class="ctl">STOP</span> / <span class="ctl">REC</span> / <span class="ctl">SAVE</span>。</span></figcaption>
+        <div class="plate">図 11 — プレイヤー</div>
+        <figcaption><span class="fn">図 11</span><span><span class="ctl">PLAY</span> / <span class="ctl">STOP</span> / <span class="ctl">REC</span> / <span class="ctl">SAVE</span>。</span></figcaption>
       </figure>
     </section>
 
