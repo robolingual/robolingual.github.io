@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.65</title>
+<title>Robolingual v0.9.66</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -561,7 +561,7 @@ body{align-items:flex-start;padding:0}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.65</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.66</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1737,6 +1737,24 @@ document.addEventListener("selectionchange",()=>{
   const sel=document.getSelection();
   if(sel&&!sel.isCollapsed)sel.removeAllRanges();
 });
+
+// --- 長押し拡大よけ -----------------------------------------------------
+// iOS は長押しから選択やルーペに入り、そこから画面ごと拡大してしまう。
+// 「タップしてすぐ長押し」も拡大のジェスチャーとして拾われる。
+// touch-action:none では止まらないので、タッチの既定動作そのものを断つ。
+// 除くのはフォーム部品だけ。スライダーの操作、BPMの入力、ファイル選択、
+// ボタンのクリックは既定動作に頼っている。
+// パッドは pointerdown で動くので、既定動作が無くても支障はない。
+(function suppressLongPress(){
+  const root=document.querySelector(".window");
+  if(!root)return;
+  const KEEP="input,textarea,select,button,a";
+  root.addEventListener("touchstart",e=>{
+    const t=e.target;
+    if(t instanceof Element&&t.closest(KEEP))return;
+    e.preventDefault();
+  },{passive:false});
+})();
 
 // --- ダブルタップ拡大よけ -----------------------------------------------
 // iOS Safari は touch-action:none でも2連タップで拡大することがある。
