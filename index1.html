@@ -2,7 +2,10 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<!-- maximum-scale と user-scalable は iOS が無視するので拡大は止められず、
+     それでいてピンチでの縮小だけは効かなくなり、一度拡大されると戻せなくなる。
+     外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
 <title>Robolingual v0.9.63</title>
 <style>
@@ -1616,15 +1619,7 @@ function flashEx(mode){
   clearTimeout(label._exFlashTimer);
   label._exFlashTimer=setTimeout(()=>label.classList.remove("ex-flash"),EX_FLASH_MS);
 }
-// changeではなくclickで拾う。ラジオは既にチェック済みだと再タップでchangeが飛ばず、
-// 連打が丸ごと無反応になっていた。状態としては保持しないので毎回チェックを外す。
-document.querySelectorAll('.switches input[type="radio"][value="d"]').forEach(el=>{
-  el.addEventListener("click",()=>{
-    if(el.disabled)return;
-    el.checked=false;
-    triggerOneShotD(el.name.replace(/D$/,""));
-  });
-});
+// パッドの押下処理は padPress にまとめてある(下方)。
 
 function stopMixer(reset=false){
   for(const source of mixerSources){
@@ -1641,20 +1636,7 @@ function stopMixer(reset=false){
 }
 
 document.querySelectorAll('.switches input[type="radio"]').forEach(el=>el.addEventListener("change",updateMixer));
-// OFFボタン廃止：点灯中(選択中)のボタンをもう一度押すと消灯(OFF)にする。
-document.querySelectorAll('.switches').forEach(group=>{
-  group.addEventListener("click",e=>{
-    const label=e.target.closest("label");
-    if(!label)return;
-    const input=document.getElementById(label.getAttribute("for"));
-    if(!input||input.disabled)return;
-    if(input.checked){
-      e.preventDefault();
-      input.checked=false;
-      updateMixer();
-    }
-  });
-});
+// パッドの押下処理は padPress にまとめてある(下方)。
 performancePlay.addEventListener("click",playRecordedPerformance);
 // --- DL WAV / SAVE 統合。直近に操作したのがミキサー(16パッド=A/B/C/Ex)か
 // プレイヤー(PLAY/STOP/REC)かで、SAVEボタンの挙動と表示を自動で切り替える。
@@ -1676,6 +1658,56 @@ document.querySelectorAll('.switches input[type="radio"]').forEach(el=>{
   btn.addEventListener("click",()=>{lastTouched="player";updateSaveButton()});
 });
 updateSaveButton();
+
+// --- パッド(A/B/C/Ex)の押下 ---------------------------------------------
+// クリックではなく pointerdown で反応させる。下のダブルタップ拡大よけが
+// 2度目のタップのクリックを消すため、クリック待ちだと連打が抜ける。
+// 押した瞬間に鳴るほうがパッドとして素直でもある。
+// ラベルの既定動作(inputの活性化)は止め、状態はすべてここで決める。
+function padPress(input){
+  if(!input||input.disabled)return;
+  lastTouched="mixer";updateSaveButton();
+  if(input.value==="d"){
+    // Exは単発トリガー。状態として持たず、押すたび鳴らす。
+    input.checked=false;
+    triggerOneShotD(input.name.replace(/D$/,""));
+    return;
+  }
+  // 点灯中のものをもう一度押したら消灯(OFF)。それ以外は選択。
+  input.checked=!input.checked;
+  input.dispatchEvent(new Event("change",{bubbles:true}));
+}
+document.querySelectorAll(".switches label").forEach(label=>{
+  const input=document.getElementById(label.getAttribute("for"));
+  if(!input)return;
+  label.addEventListener("pointerdown",e=>{if(e.isPrimary)padPress(input)});
+  label.addEventListener("click",e=>e.preventDefault()); // 二重発火を断つ
+  // キーボード操作(スペース)だけはクリックで拾う。ポインタ由来は detail>0。
+  input.addEventListener("click",e=>{if(e.detail===0)padPress(input)});
+});
+
+// --- ダブルタップ拡大よけ -----------------------------------------------
+// iOS Safari は touch-action:none でも2連タップで拡大することがある。
+// 2度目のタップの既定動作を潰して、拡大そのものを起こさせない。
+// preventDefault はそのタップのクリックも消すので、クリックで動く要素には
+// 投げ直す。パッドは pointerdown で動くので投げ直しは要らない。
+(function suppressDoubleTapZoom(){
+  const root=document.querySelector(".window");
+  if(!root)return;
+  const GAP=350,DIST=40;
+  let lastAt=0,lastX=0,lastY=0;
+  root.addEventListener("touchend",e=>{
+    if(e.touches.length)return; // 指がまだ残っている＝多点操作なので触らない
+    const t=e.changedTouches[0];if(!t)return;
+    const now=performance.now();
+    const second=(now-lastAt<=GAP)&&Math.hypot(t.clientX-lastX,t.clientY-lastY)<=DIST;
+    lastAt=now;lastX=t.clientX;lastY=t.clientY;
+    if(!second)return;
+    e.preventDefault();
+    const el=e.target instanceof Element?e.target.closest("button,a,select"):null;
+    if(el&&!el.disabled)el.click();
+  },{passive:false});
+})();
 
 performanceRec.addEventListener("click",startPerformanceRecording);
 performanceStop.addEventListener("click",()=>{
