@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.72</title>
+<title>Robolingual v0.9.73</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -593,7 +593,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.72</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.73</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1386,6 +1386,9 @@ let slipSnapshotElapsed=-1;
 // その差をここで補正する。プラスにすると吸着位置が前へ、マイナスで後ろへ動く。
 // 実測できない値なので、耳で合わせて調整する前提の数値。
 const SLIP_ALIGN_OFFSET_MS=0;
+// 波形上でサンプリング箇所を光らせるための控え。
+// slipBandEnd/Dur はループ内の秒、slipLoopAnchor は今の周回が始まった時刻。
+let slipBandEnd=-1,slipBandDur=0,slipLoopAnchor=0;
 const SLIP_ZONES=[[1,1/32,1/16],[1/2,1/4,1/8]]; // 上段/下段 × 左/中/右(手描き案の配置通り)
 function waveZoneFraction(clientX,clientY){
   const rect=wave.getBoundingClientRect();
@@ -1445,7 +1448,15 @@ function slipPlayWindow(fraction){
   src.loopEnd=startSec+durSec;
   const gain=ctx.createGain();gain.gain.value=1;
   src.connect(gain).connect(getChaosOut());
-  src.start(ctx.currentTime,startSec);
+  const t0=ctx.currentTime;
+  src.start(t0,startSec);
+  // 光らせる帯の位置を出す。写しの末尾がループ内の slipSnapshotElapsed に
+  // あたるので、そこから「窓の終わりが末尾より手前にある分」を引き戻す。
+  // 吸着を諦めた場合もこの引き算なら正しい位置になる。
+  const tailGap=slipSnapshot.length/ctx.sampleRate-(startSec+durSec);
+  slipBandEnd=slipSnapshotElapsed>=0?slipSnapshotElapsed-tailGap:-1;
+  slipBandDur=durSec;
+  slipLoopAnchor=t0;
   return{src,gain};
 }
 function slipStart(fraction){
@@ -1480,6 +1491,7 @@ function slipRetrigger(fraction){
 function slipStop(){
   if(!slipActive)return;
   slipActive=false;slipCurrentFraction=null;slipSnapshot=null;slipSnapshotElapsed=-1;
+  slipBandEnd=-1;slipBandDur=0;
   const ctx=getAudioContext(),t=ctx.currentTime;
   if(slipSource){
     const{src,gain}=slipSource;slipSource=null;
@@ -2763,6 +2775,27 @@ function drawMixerGrid(){
     ctx.strokeStyle="rgba(255,255,255,.34)";ctx.lineWidth=Math.max(2,(devicePixelRatio||1)*1.9);
     ctx.beginPath();ctx.moveTo(0,y1);ctx.lineTo(width,y1);ctx.stroke();
   });
+
+  // --- スリップ中：サンプリングした箇所を刻みに同期して光らせる -----------
+  // ループ1周ぶんかけて真っ白から透明へ落ちる。刻みが細かいほど周期が短く
+  // なるので、自然と点滅に見える。
+  // ただし最小の1/32は落ちきる前に次が来て点きっぱなしに見えるため、
+  // そこだけ1/16の速さの赤にして、他と区別できるようにする。
+  if(slipActive&&slipBandDur>0&&slipBandEnd>=0){
+    const finest=slipCurrentFraction<=1/32+1e-9;
+    const period=finest?slipBandDur*2:slipBandDur;
+    const phase=(((ac.currentTime-slipLoopAnchor)%period)+period)%period/period;
+    const a=1-phase; // 頭で最も明るく、1周かけて消える
+    ctx.fillStyle=finest?`rgba(255,64,64,${(a*.8).toFixed(3)})`
+                        :`rgba(255,255,255,${(a*.72).toFixed(3)})`;
+    const endX=((slipBandEnd%loopDur+loopDur)%loopDur)/loopDur*width;
+    const w=Math.max(2,(slipBandDur/loopDur)*width);
+    const startX=endX-w;
+    if(startX<0){ // ループの頭をまたぐ帯は2つに割って描く
+      ctx.fillRect(0,0,endX,height);
+      ctx.fillRect(width+startX,0,-startX,height);
+    }else ctx.fillRect(startX,0,w,height);
+  }
 
   ctx.strokeStyle="rgba(170,255,0,.55)"; // 小節の変わり目
   ctx.lineWidth=Math.max(2,(devicePixelRatio||1)*1.9);
