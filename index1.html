@@ -410,6 +410,18 @@ main{padding:16px 16px 30px;position:relative}
   border-radius:0 0 14px 14px}
 .deck-row{position:relative;z-index:1}
 
+/* --- スキンの外側は黒に統一 -------------------------------------------
+   スキン(#deckSkin)が映っている範囲より外に、明るい要素が額縁のように
+   残っていたので黒に倒す。タイトルバーは意図的にそのまま残す。
+     .window の背景  #f4f4f4 → 黒
+     .window の枠線  #555    → 黒 (太さは2pxのまま。0にすると全体の寸法が
+                               4px変わってscale計算まで動くため色だけ変える)
+     .window の影    6px 6px 0 #ccc → 消す(右下に明るい帯として出ていた)
+     body の内側リング inset 0 0 0 1px #e0e0e0 → 消す
+   body自体の背景#030303は既に黒なので触らない。                       */
+.window{background:#000;border-color:#000;box-shadow:none}
+body{box-shadow:none}
+
 </style>
 </head>
 <body>
