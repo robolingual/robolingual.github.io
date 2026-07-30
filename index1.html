@@ -434,7 +434,13 @@ body{box-shadow:none}
    数値入力だけは選択・編集できるよう戻す。                             */
 /* パネルの外(下の黒い余白)も body なので、ここを外すとそこだけ
    ダブルタップ拡大が生きてしまう。html/body ごと切る。 */
-html,body{touch-action:none;overscroll-behavior:none}
+html,body{touch-action:none;overscroll-behavior:none;
+  /* パネルの外の黒い余白は body のままで、ここだけ選択が生きていた。
+     ダブルタップで文字が選択されると iOS はその段落へ寄って拡大するので、
+     余白も含めて選択を切る。 */
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent}
 
 /* --- 画面いっぱい・上詰め ----------------------------------------------
    余白14pxのぶん横が痩せていたので0にして、画面の横幅を使い切る。
@@ -1748,6 +1754,14 @@ speedSlider.addEventListener("dblclick",resetMasterRate);
     root.addEventListener(type,e=>e.preventDefault());
   }
 })();
+// iOS Safari は user-select:none だけでは選択を諦めないことがあり、
+// ダブルタップで虫めがねが出る。出たあと段落へ寄って拡大までされるので、
+// 選択の開始そのものを断つ。数値入力だけは編集できるよう通す。
+document.addEventListener("selectstart",e=>{
+  const el=e.target instanceof Element?e.target:e.target&&e.target.parentElement;
+  if(el&&el.closest("input,textarea,[contenteditable]"))return;
+  e.preventDefault();
+});
 
 // --- 目盛りをタップしてそのテンポへ -----------------------------------
 // 1.0×だけがクリックできる状態だったので、⅓×〜3.0×の全部を同じ扱いにする。
