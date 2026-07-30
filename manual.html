@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROBOLINGUAL v1.0 取扱説明書</title>
+<meta name="description" content="ROBOLINGUAL v1.0 取扱説明書。音源を4人のキャラクターがロボ語として演奏し直す、ブラウザ上の楽器です。">
+<style>
+/* ============================================================
+   ROBOLINGUAL v1.0 — 取扱説明書
+   楽器の取説として組む。紙の技術資料の地に、操作子の名前だけを
+   等幅で置き、機体の緑は要所にとどめる。
+   ============================================================ */
+:root{
+  /* 紙。純白ではなく、わずかに緑へ寄せた温かみのある白 */
+  --paper:#FAFAF7;
+  --paper-2:#F2F2EC;
+  --ink:#16180F;          /* 純黒ではなく緑に寄せた墨 */
+  --ink-2:#5A5C4F;        /* 副文・キャプション */
+  --rule:#DCDDD2;         /* 罫 */
+  --accent:#4C7A00;       /* 機体の緑を紙で読める濃さに落としたもの */
+  --panel:#1C1E17;        /* 機体そのものの黒 */
+  --panel-ink:#EDEEE6;
+  --readout:#AAFF00;      /* 機体の表示灯。黒地でだけ使う */
+
+  --font-body:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic Medium",YuGothic,Meiryo,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+
+  --measure:68ch;
+  --gap:clamp(1.5rem,4vw,2.75rem);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#14160F;
+    --paper-2:#1C1E17;
+    --ink:#E8E9DF;
+    --ink-2:#9DA093;
+    --rule:#2E3128;
+    --accent:#AAFF00;
+    --panel:#0C0E08;
+    --panel-ink:#E8E9DF;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#14160F; --paper-2:#1C1E17; --ink:#E8E9DF; --ink-2:#9DA093;
+  --rule:#2E3128; --accent:#AAFF00; --panel:#0C0E08; --panel-ink:#E8E9DF;
+}
+:root[data-theme="light"]{
+  --paper:#FAFAF7; --paper-2:#F2F2EC; --ink:#16180F; --ink-2:#5A5C4F;
+  --rule:#DCDDD2; --accent:#4C7A00; --panel:#1C1E17; --panel-ink:#EDEEE6;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--font-body);font-size:16px;line-height:1.85;
+  font-feature-settings:"palt" 1;
+}
+
+/* --- 機体を模した細い帯。製品への目配せはここだけにとどめる --- */
+.masthead{background:var(--panel);color:var(--panel-ink);border-bottom:1px solid rgba(0,0,0,.5)}
+.masthead-in{
+  max-width:1140px;margin:0 auto;padding:1.15rem clamp(1.25rem,4vw,2.5rem);
+  display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;
+}
+.wordmark{
+  font-family:var(--font-mono);font-weight:700;font-size:clamp(.95rem,2.4vw,1.15rem);
+  letter-spacing:.42em;margin:0;text-transform:uppercase;
+}
+.badge{
+  font-family:var(--font-mono);font-size:.72rem;letter-spacing:.12em;
+  color:var(--readout);border:1px solid currentColor;border-radius:2px;
+  padding:.1rem .45rem;line-height:1.6;
+}
+.masthead .kind{
+  margin-left:auto;font-family:var(--font-mono);font-size:.72rem;
+  letter-spacing:.18em;color:#8E9184;text-transform:uppercase;
+}
+
+/* --- 扉 --- */
+.title-block{
+  max-width:1140px;margin:0 auto;
+  padding:clamp(2.5rem,7vw,4.5rem) clamp(1.25rem,4vw,2.5rem) clamp(1.75rem,4vw,2.5rem);
+  border-bottom:1px solid var(--rule);
+}
+.title-block h1{
+  font-size:clamp(1.9rem,5.2vw,3rem);line-height:1.28;margin:0 0 .7rem;
+  font-weight:800;letter-spacing:-.015em;text-wrap:balance;max-width:22ch;
+}
+.lede{margin:0;max-width:var(--measure);color:var(--ink-2);font-size:1.02rem}
+.meta{
+  margin-top:1.6rem;display:flex;gap:1.5rem 2.25rem;flex-wrap:wrap;
+  font-family:var(--font-mono);font-size:.76rem;letter-spacing:.06em;color:var(--ink-2);
+}
+.meta b{display:block;color:var(--ink);font-weight:600;letter-spacing:.02em;margin-top:.15rem}
+
+/* --- 本体は索引＋一段組み --- */
+.sheet{
+  max-width:1140px;margin:0 auto;padding:0 clamp(1.25rem,4vw,2.5rem) 4rem;
+  display:grid;grid-template-columns:1fr;gap:var(--gap);
+}
+@media (min-width:960px){
+  .sheet{grid-template-columns:13.5rem minmax(0,1fr);gap:3.5rem;align-items:start}
+}
+
+/* 索引 */
+.index{padding-top:2.25rem}
+@media (min-width:960px){.index{position:sticky;top:1.5rem;max-height:calc(100vh - 3rem);overflow-y:auto}}
+.index h2{
+  font-family:var(--font-mono);font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--ink-2);margin:0 0 .9rem;font-weight:600;
+}
+.index ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.1rem}
+.index a{
+  display:flex;gap:.7rem;text-decoration:none;color:var(--ink-2);
+  padding:.34rem 0;font-size:.875rem;line-height:1.5;border-bottom:1px solid transparent;
+}
+.index a .n{font-family:var(--font-mono);font-size:.72rem;opacity:.75;padding-top:.16rem}
+.index a:hover{color:var(--ink)}
+.index a[aria-current="true"]{color:var(--accent);font-weight:600}
+.index a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+
+/* 章 */
+.body-col{padding-top:2.25rem;min-width:0}
+section{scroll-margin-top:1.5rem;padding-bottom:2.6rem;margin-bottom:2.6rem;border-bottom:1px solid var(--rule)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;align-items:baseline;gap:.85rem;margin-bottom:1.1rem}
+.sec-n{
+  font-family:var(--font-mono);font-size:.78rem;letter-spacing:.1em;
+  color:var(--accent);font-weight:600;padding-top:.1rem;
+}
+h2.sec-t{font-size:clamp(1.25rem,3.2vw,1.6rem);line-height:1.35;margin:0;font-weight:800;letter-spacing:-.01em}
+h3{
+  font-size:.95rem;margin:2rem 0 .6rem;font-weight:700;
+  letter-spacing:.02em;color:var(--ink);
+}
+p{margin:0 0 1rem;max-width:var(--measure)}
+ul{margin:0 0 1rem;padding-left:1.15rem;max-width:var(--measure)}
+li{margin-bottom:.42rem}
+li>ul{margin-top:.42rem;margin-bottom:.2rem}
+a{color:var(--accent)}
+
+/* 操作子の名前は等幅で。画面上のどれを指しているか一目で分かるように */
+kbd,.ctl{
+  font-family:var(--font-mono);font-size:.83em;letter-spacing:.02em;
+  background:var(--paper-2);border:1px solid var(--rule);border-radius:2px;
+  padding:.08em .38em;white-space:nowrap;
+}
+kbd{font-weight:600;box-shadow:0 1px 0 var(--rule)}
+
+/* 図版 */
+figure{
+  margin:1.6rem 0;border:1px solid var(--rule);background:var(--paper-2);
+  border-radius:2px;overflow:hidden;
+}
+figure img{display:block;width:100%;height:auto}
+figcaption{
+  font-family:var(--font-mono);font-size:.72rem;letter-spacing:.05em;
+  color:var(--ink-2);padding:.65rem .85rem;border-top:1px solid var(--rule);
+  display:flex;gap:.7rem;
+}
+figcaption .fn{color:var(--accent);font-weight:600;flex:none}
+/* 画像がまだ無いときは、寸法だけ取った枠を出す */
+figure.empty img{display:none}
+figure.empty .plate{
+  display:flex;align-items:center;justify-content:center;min-height:8.5rem;
+  padding:1.5rem;color:var(--ink-2);font-family:var(--font-mono);font-size:.74rem;
+  letter-spacing:.06em;text-align:center;
+  background:repeating-linear-gradient(135deg,transparent,transparent 9px,var(--rule) 9px,var(--rule) 10px);
+}
+figure:not(.empty) .plate{display:none}
+
+/* 表 */
+.table-wrap{overflow-x:auto;margin:1.2rem 0;border:1px solid var(--rule);border-radius:2px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:22rem}
+th,td{text-align:left;padding:.62rem .85rem;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{
+  font-family:var(--font-mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-2);font-weight:600;background:var(--paper-2);
+}
+tbody tr:last-child td{border-bottom:0}
+td:first-child{font-family:var(--font-mono);font-size:.84rem;white-space:nowrap}
+td.num{font-variant-numeric:tabular-nums}
+
+/* 手順 */
+ol.steps{counter-reset:s;list-style:none;margin:0 0 1rem;padding:0;max-width:var(--measure)}
+ol.steps li{
+  counter-increment:s;position:relative;padding-left:2.2rem;margin-bottom:.55rem;
+}
+ol.steps li::before{
+  content:counter(s,decimal-leading-zero);position:absolute;left:0;top:.16em;
+  font-family:var(--font-mono);font-size:.74rem;color:var(--accent);font-weight:600;
+}
+
+/* 補足 */
+.note{
+  margin:1.4rem 0;padding:.95rem 1.1rem;background:var(--paper-2);
+  border-left:2px solid var(--accent);max-width:var(--measure);
+}
+.note p{margin:0;font-size:.92rem;color:var(--ink-2)}
+.note p+p{margin-top:.55rem}
+.note strong{color:var(--ink)}
+
+footer{
+  border-top:1px solid var(--rule);background:var(--paper-2);
+}
+.footer-in{
+  max-width:1140px;margin:0 auto;padding:2rem clamp(1.25rem,4vw,2.5rem);
+  display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  font-family:var(--font-mono);font-size:.74rem;letter-spacing:.06em;color:var(--ink-2);
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <p class="wordmark">Robolingual</p>
+    <span class="badge">v1.0</span>
+    <span class="kind">Owner's Manual</span>
+  </div>
+</header>
+
+<div class="title-block">
+  <h1>音源をひとつ渡すと、4人が別々の流儀で演奏し直します</h1>
+  <p class="lede">ROBOLINGUAL は、手持ちの音声や動画から「ロボ語」を生成し、その場で組み替えて演奏するブラウザ上の楽器です。インストールは不要で、スマートフォン・タブレット・PC のいずれでも動作します。この説明書では、読み込みから書き出しまでの操作をひと通り扱います。</p>
+  <div class="meta">
+    <span>対応環境<b>iOS / Android / PC ブラウザ</b></span>
+    <span>入力形式<b>WAV MP3 M4A AAC MP4 M4V MOV</b></span>
+    <span>ループ長<b>8小節 固定</b></span>
+    <span>音源パターン<b>16（4キャラ×4種）</b></span>
+  </div>
+</div>
+
+<div class="sheet">
+
+  <nav class="index" aria-label="目次">
+    <h2>目次</h2>
+    <ol>
+      <li><a href="#s1"><span class="n">01</span><span>音声を読み込む</span></a></li>
+      <li><a href="#s2"><span class="n">02</span><span>ロボ語を生成する</span></a></li>
+      <li><a href="#s3"><span class="n">03</span><span>パターンを選ぶ</span></a></li>
+      <li><a href="#s4"><span class="n">04</span><span>PAN</span></a></li>
+      <li><a href="#s5"><span class="n">05</span><span>BPM</span></a></li>
+      <li><a href="#s6"><span class="n">06</span><span>MASTER SPEED</span></a></li>
+      <li><a href="#s7"><span class="n">07</span><span>カオスパッド</span></a></li>
+      <li><a href="#s8"><span class="n">08</span><span>スリップループ</span></a></li>
+      <li><a href="#s9"><span class="n">09</span><span>プレイヤーと保存</span></a></li>
+      <li><a href="#s10"><span class="n">10</span><span>ショートカット</span></a></li>
+      <li><a href="#spec"><span class="n">A</span><span>仕様</span></a></li>
+      <li><a href="#faq"><span class="n">B</span><span>困ったときは</span></a></li>
+    </ol>
+  </nav>
+
+  <main class="body-col">
+
+    <figure class="empty" id="fig0">
+      <img src="docs/images/00-overview.png" alt="ROBOLINGUAL の画面全体">
+      <div class="plate">図 0 — 画面全体</div>
+      <figcaption><span class="fn">図 0</span><span>画面全体。上段にプレイヤーと波形、中段に16パッド、下段にカオスパッド。</span></figcaption>
+    </figure>
+
+    <section id="s1">
+      <div class="sec-head"><span class="sec-n">01</span><h2 class="sec-t">音声を読み込む</h2></div>
+      <p>素材になる音を決めます。用意された音源を使う方法と、自分のファイルを使う方法があります。</p>
+      <h3>プリセットを使う</h3>
+      <p><span class="ctl">PRESET 1</span> <span class="ctl">PRESET 2</span> <span class="ctl">PRESET 3</span> のいずれかを押すと、読み込みから生成まで自動で進みます。まずはこちらで感触をつかむのが早道です。</p>
+      <h3>自分の音源を使う</h3>
+      <ol class="steps">
+        <li><span class="ctl">CHOOSE</span> を押してファイルを選びます。</li>
+        <li>波形が表示されたら読み込み完了です。</li>
+      </ol>
+      <p>音声ファイルのほか、動画ファイルからも音声を抜き出せます。対応形式は WAV / MP3 / M4A / AAC / MP4 / M4V / MOV です。</p>
+      <figure class="empty" id="fig1">
+        <img src="docs/images/01-source.png" alt="CHOOSE と PRESET">
+        <div class="plate">図 1 — 読み込みまわり</div>
+        <figcaption><span class="fn">図 1</span><span>画面右上の <span class="ctl">CHOOSE</span> と <span class="ctl">TRANSLATE</span>、および波形下のプリセット。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s2">
+      <div class="sec-head"><span class="sec-n">02</span><h2 class="sec-t">ロボ語を生成する</h2></div>
+      <p><span class="ctl">TRANSLATE</span> を押すと、読み込んだ音声からアタック（音の立ち上がり）を検出し、それを素材として <strong>4キャラクター × 4バリエーション＝16パターン</strong>を生成します。波形の下に「Ready」と表示されれば完了です。</p>
+      <p>素材の切り出し位置は生成のたびに変わります。同じ音源でも、押すたびに異なる16パターンができます。</p>
+      <div class="note">
+        <p><strong>生成前に BPM を決めておいてください。</strong>生成されるロボ語のテンポは、そのときの BPM を基準に決まります。</p>
+      </div>
+      <p><span class="ctl">↑RESTART</span> は、生成したパターンを保ったままループを頭から鳴らし直します。演奏中に頭を合わせたいときに使います。</p>
+      <figure class="empty" id="fig2">
+        <img src="docs/images/02-translate.png" alt="生成後の波形">
+        <div class="plate">図 2 — 生成後の波形</div>
+        <figcaption><span class="fn">図 2</span><span>生成が終わった状態。検出されたアタック数が表示される。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s3">
+      <div class="sec-head"><span class="sec-n">03</span><h2 class="sec-t">パターンを選ぶ</h2></div>
+      <p>16個のパッドがこの楽器の中心です。<strong>縦4段がキャラクター、横4列がバリエーション</strong>という並びになっています。</p>
+      <h3>4人のキャラクター</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>段</th><th>性格</th></tr></thead>
+          <tbody>
+            <tr><td>NINJA</td><td>しなやか。伸ばしと上下のピッチベンドが主役で、終盤に向けて滑らかに解けていきます。</td></tr>
+            <tr><td>KILLER</td><td>硬く攻撃的。短く密な連打を身上とし、終盤ほど畳みかけるスタッターが増えます。</td></tr>
+            <tr><td>BANKER</td><td>生真面目。確率に頼らず、拍ごとに確実にキックを打ちます。後半は16分単位まで正確さを上げます。</td></tr>
+            <tr><td>WITCH</td><td>気まぐれ。骨格を踏まえつつ、不規則に間引きながら音を飛ばします。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>4つのバリエーション</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>列</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td>A</td><td>短く、密で、乾いた発音。</td></tr>
+            <tr><td>B</td><td>長く、丸く、アタック少なめ。柔らかいエンベロープ。</td></tr>
+            <tr><td>C</td><td>4スライスの固定パターンが主体。</td></tr>
+            <tr><td>Ex</td><td>ワンショットの必殺技。押した瞬間に一発だけ鳴ります。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>操作</h3>
+      <ul>
+        <li>パッドを押すと、その段がそのバリエーションに切り替わります。</li>
+        <li>点灯中のパッドをもう一度押すと、消灯してその段が止まります。</li>
+        <li><span class="ctl">Ex</span> は点灯したままにはならず、押した瞬間だけ光ります。</li>
+        <li><span class="ctl">Ex</span> は連打を前提としています。連打すると頭の一撃が繰り返され、フィルインとして機能します。</li>
+      </ul>
+      <div class="note">
+        <p>4段は同じタイムラインの上を走ります。<strong>どう組み替えても頭がずれません。</strong></p>
+      </div>
+      <figure class="empty" id="fig3">
+        <img src="docs/images/03-pads.png" alt="16パッド">
+        <div class="plate">図 3 — 16パッド</div>
+        <figcaption><span class="fn">図 3</span><span>16パッド。縦がキャラクター、横がバリエーション。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s4">
+      <div class="sec-head"><span class="sec-n">04</span><h2 class="sec-t">PAN</h2></div>
+      <p>画面左の4つのノブで、キャラクターごとの左右の定位を決めます。上から NINJA / KILLER / BANKER / WITCH の順です。ノブはドラッグして回します。</p>
+      <p>ループ（A・B・C）もワンショット（Ex）も、同じキャラクターであれば同じ位置から鳴ります。4人を左右に散らすと、それぞれの動きが聴き分けやすくなります。</p>
+      <figure class="empty" id="fig4">
+        <img src="docs/images/04-pan.png" alt="PANノブ">
+        <div class="plate">図 4 — PAN</div>
+        <figcaption><span class="fn">図 4</span><span>キャラクターごとのPANノブ。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s5">
+      <div class="sec-head"><span class="sec-n">05</span><h2 class="sec-t">BPM</h2></div>
+      <p>設定できる範囲は <span class="ctl">60</span>〜<span class="ctl">260</span> です。BPM を変えると、波形上の拍の目盛りも追随します。</p>
+      <h3>スマートフォン・タブレット</h3>
+      <p><span class="ctl">BPM</span> を押すと、<strong>16パッドがそのままテンキーに変わります。</strong></p>
+      <ul>
+        <li>開いた直後に数字を押すと、今の値を消して打ち直しになります。</li>
+        <li>今の値を直したいときは、先に <span class="ctl">⌫</span> か <span class="ctl">◀</span> を押します。</li>
+        <li><span class="ctl">◀</span> <span class="ctl">▶</span> でカーソルを動かし、途中に数字を挿し込めます。</li>
+        <li><span class="ctl">ENTER</span> で確定、<span class="ctl">CANCEL</span> で取り消しです。<span class="ctl">BPM</span> をもう一度押しても取り消せます。</li>
+      </ul>
+      <div class="note">
+        <p>パッドをテンキーにしているのは、<strong>端末のソフトウェアキーボードを出さないためです。</strong>キーボードが開くと画面が上にずれ、閉じても元の位置に戻らないためです。</p>
+      </div>
+      <h3>PC</h3>
+      <p><span class="ctl">BPM</span> の欄をクリックして、そのまま打ち込めます。テンキーは出ません。</p>
+      <figure class="empty" id="fig5">
+        <img src="docs/images/05-bpm.png" alt="パッドのテンキー">
+        <div class="plate">図 5 — パッドのテンキー</div>
+        <figcaption><span class="fn">図 5</span><span>16パッドがテンキーに切り替わった状態。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s6">
+      <div class="sec-head"><span class="sec-n">06</span><h2 class="sec-t">MASTER SPEED</h2></div>
+      <p>画面右の縦スライダーで、全体の再生速度を <span class="ctl">⅓×</span>〜<span class="ctl">3.0×</span> の範囲で変えます。上が遅く、下が速い配置です。生成時に設定した BPM が基準になります。</p>
+      <ul>
+        <li>ドラッグすると連続的に変化します。</li>
+        <li>目盛りをタップすると、その速度へ一度で移動します。</li>
+        <li>ダブルクリックで <span class="ctl">1.0×</span> に戻ります。</li>
+      </ul>
+      <p>上部には現在の倍率と、換算後の BPM が表示されます。速度を変えると、スリップループの刻みもその速度を基準に追随します。</p>
+      <figure class="empty" id="fig6">
+        <img src="docs/images/06-speed.png" alt="速度スライダー">
+        <div class="plate">図 6 — MASTER SPEED</div>
+        <figcaption><span class="fn">図 6</span><span>再生速度スライダー。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s7">
+      <div class="sec-head"><span class="sec-n">07</span><h2 class="sec-t">カオスパッド</h2></div>
+      <p>画面下部の八卦が描かれた盤で、音を空間ごと歪ませます。<strong>中心がドライ（原音）</strong>で、外周へ向かうほど深くかかります。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>方向</th><th>かかり方</th></tr></thead>
+          <tbody>
+            <tr><td>SOCIETY 上</td><td>金属的インダストリアル。低域を固くブーストし、中音の声を前に出します。</td></tr>
+            <tr><td>PARAISO 右</td><td>ピッチを上げ、ディレイと長く煌めくリバーブ。終わらない安らぎ。</td></tr>
+            <tr><td>TOKIO 下</td><td>グリッチとボコーダーみ。きらめく未来。</td></tr>
+            <tr><td>ZION 左</td><td>荘厳。パイプオルガン的な持続に、コーラスと超ロングリバーブ。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>地獄ゾーン</h3>
+      <p>斜め45度付近、隣り合う2方向がほぼ均等に混ざる帯は「地獄ゾーン」です。専用の過激な処理がかかり、さらに<strong>そのとき鳴っている音から拾った亡霊のような声</strong>が薄く混ざります。外部の音源ではなく、その場の演奏から生成されます。</p>
+      <h3>操作方式</h3>
+      <p>パッドは<strong>相対方式</strong>です。触った場所へ飛ぶのではなく、触ってから動かした分だけ現在地が動きます。細かい追い込みがしやすい方式です。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>操作子</th><th>動作</th></tr></thead>
+          <tbody>
+            <tr><td>HOLD OFF</td><td>指を離すとゼロ地点に戻ります（初期状態）。</td></tr>
+            <tr><td>HOLD ON</td><td>指を離した場所に張り付いたままになります。</td></tr>
+            <tr><td>0 LOCK</td><td>戻る先であるゼロ地点を、現在地に設定します。初期値は中央＝ドライです。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <p><span class="ctl">0 LOCK</span> で軽く歪ませた場所をゼロ地点にしておくと、<strong>その状態を基準に出たり戻ったりできます。</strong></p>
+      </div>
+      <figure class="empty" id="fig7">
+        <img src="docs/images/07-chaos.png" alt="カオスパッド">
+        <div class="plate">図 7 — カオスパッド</div>
+        <figcaption><span class="fn">図 7</span><span>カオスパッドと <span class="ctl">HOLD</span> / <span class="ctl">0 LOCK</span>。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s8">
+      <div class="sec-head"><span class="sec-n">08</span><h2 class="sec-t">スリップループ</h2></div>
+      <p>演奏中に<strong>波形を指で押さえる</strong>と、直前に鳴っていた音がその場で繰り返されます。いわゆるビートリピートです。</p>
+      <h3>仕組み</h3>
+      <p>押した瞬間に、その時点から遡って<strong>4拍ぶん</strong>を素材として切り取ります。押している間はこの素材を使い続け、途中で取り直すことはありません。素材の終わりは直前の拍に合わせてあるため、ループの頭にキックなどのアタックが乗ります。</p>
+      <h3>刻みを変える</h3>
+      <p>波形は2段×3列の6区画に分かれています。押さえたまま指をずらすと刻みが変わります。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>左</th><th>中</th><th>右</th></tr></thead>
+          <tbody>
+            <tr><td>上段</td><td class="num">1</td><td class="num">1/32</td><td class="num">1/16</td></tr>
+            <tr><td>下段</td><td class="num">1/2</td><td class="num">1/4</td><td class="num">1/8</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>刻みを変えても<strong>音の出頭は動きません。</strong>素材の頭は固定で、ループの終わりだけが伸び縮みします。指を滑らせても鳴り直しが起きないため、途切れずに繋がります。</p>
+      <h3>表示</h3>
+      <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。帯はループ1周ぶんかけて白から透明へ落ちるので、刻みが細かいほど点滅が速くなります。</p>
+      <p>最も細かい <span class="ctl">1/32</span> だけは帯が数ピクセルしかなく見分けにくいため、白い芯のまわりが発光する表示になります。発光の色は折り返しごとに<strong>赤と黄で入れ替わります。</strong></p>
+      <p>指を離すと元の演奏に戻ります。タイムライン自体は止まっていないため、離した時点の現在地からそのまま続きます。</p>
+      <figure class="empty" id="fig8">
+        <img src="docs/images/08-slip.png" alt="スリップループ">
+        <div class="plate">図 8 — スリップループ</div>
+        <figcaption><span class="fn">図 8</span><span>波形を押さえ、切り取り範囲が光っている状態。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s9">
+      <div class="sec-head"><span class="sec-n">09</span><h2 class="sec-t">プレイヤーと保存</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>操作子</th><th>動作</th></tr></thead>
+          <tbody>
+            <tr><td>▶︎ PLAY</td><td>再生します。</td></tr>
+            <tr><td>■︎ STOP</td><td>停止します。</td></tr>
+            <tr><td>●︎ REC</td><td>演奏を録音します。カオスパッドもスリップループも、聴こえているまま録れます。</td></tr>
+            <tr><td>SAVE</td><td>直前に操作していた対象に応じて内容が変わります。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>SAVE の切り替わり</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>表示</th><th>保存されるもの</th><th>条件</th></tr></thead>
+          <tbody>
+            <tr><td>SAVE ZIP</td><td>生成した16パターンを個別の WAV にまとめた ZIP</td><td>16パッドを最後に操作した場合</td></tr>
+            <tr><td>SAVE WAV</td><td>録音した演奏1本の WAV</td><td>PLAY / STOP / REC を最後に操作した場合</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>狙った方を保存したいときは、先にその側を一度操作してから <span class="ctl">SAVE</span> を押してください。</p>
+      <figure class="empty" id="fig9">
+        <img src="docs/images/09-player.png" alt="プレイヤー">
+        <div class="plate">図 9 — プレイヤー</div>
+        <figcaption><span class="fn">図 9</span><span><span class="ctl">PLAY</span> / <span class="ctl">STOP</span> / <span class="ctl">REC</span> / <span class="ctl">SAVE</span>。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s10">
+      <div class="sec-head"><span class="sec-n">10</span><h2 class="sec-t">ショートカット</h2></div>
+      <p>PC で使用できます。文字入力中は無効になります。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>キー</th><th>動作</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>Z</kbd></td><td>HOLD の切り替え</td></tr>
+            <tr><td><kbd>X</kbd></td><td>0 LOCK</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="spec">
+      <div class="sec-head"><span class="sec-n">A</span><h2 class="sec-t">仕様</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>項目</th><th>値</th></tr></thead>
+          <tbody>
+            <tr><td>ループ長</td><td class="num">8小節 固定</td></tr>
+            <tr><td>BPM</td><td class="num">60 〜 260</td></tr>
+            <tr><td>再生速度</td><td class="num">⅓× 〜 3.0×</td></tr>
+            <tr><td>パッド</td><td class="num">16（4キャラクター × A・B・C・Ex）</td></tr>
+            <tr><td>スリップ刻み</td><td class="num">1 / 1/2 / 1/4 / 1/8 / 1/16 / 1/32</td></tr>
+            <tr><td>スリップ素材長</td><td class="num">4拍</td></tr>
+            <tr><td>カオスパッド</td><td class="num">4方向 ＋ 斜め4地獄ゾーン</td></tr>
+            <tr><td>入力形式</td><td>WAV / MP3 / M4A / AAC / MP4 / M4V / MOV</td></tr>
+            <tr><td>書き出し</td><td>16パターン ZIP ／ 演奏 WAV</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="sec-head"><span class="sec-n">B</span><h2 class="sec-t">困ったときは</h2></div>
+      <h3>音が出ない</h3>
+      <p>ブラウザは、利用者が画面を一度操作するまで音を出せない仕様になっています。無音のままなら、どこかを一度タップしてから <span class="ctl">▶︎ PLAY</span> を押してください。</p>
+      <h3>パッドが押せない</h3>
+      <p>生成がまだ終わっていません。<span class="ctl">TRANSLATE</span> またはプリセットの読み込みが完了し、「Ready」と表示されるまでお待ちください。</p>
+      <h3>生成結果が気に入らない</h3>
+      <p>もう一度 <span class="ctl">TRANSLATE</span> を押してください。使われる素材が変わり、別の16パターンになります。</p>
+      <h3>動画を読み込むと音が小さい</h3>
+      <p>一部の動画は振幅が小さく見えることがあります。表示上は自動で拡大していますが、音声データそのものは変更していません。</p>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="footer-in">
+    <span>ROBOLINGUAL v1.0 — Owner's Manual</span>
+    <span>本書の内容は予告なく変更される場合があります</span>
+  </div>
+</footer>
+
+<script>
+// 図版は、画像が置かれていない間は枠だけを見せる。
+// docs/images/ に所定の名前で置けば、そのまま差し替わる。
+document.querySelectorAll("figure img").forEach(img=>{
+  const done=()=>img.closest("figure").classList.remove("empty");
+  if(img.complete&&img.naturalWidth>0)done();
+  else img.addEventListener("load",done);
+});
+// 読んでいる章を目次側で示す。
+const marks=[...document.querySelectorAll("section[id]")];
+const links=new Map([...document.querySelectorAll(".index a")].map(a=>[a.getAttribute("href").slice(1),a]));
+if("IntersectionObserver" in window){
+  const io=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{
+      const a=links.get(e.target.id);
+      if(a&&e.isIntersecting){
+        links.forEach(x=>x.removeAttribute("aria-current"));
+        a.setAttribute("aria-current","true");
+      }
+    });
+  },{rootMargin:"-15% 0px -75% 0px"});
+  marks.forEach(s=>io.observe(s));
+}
+</script>
+</body>
+</html>
