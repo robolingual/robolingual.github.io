@@ -431,6 +431,12 @@ body{box-shadow:none}
    (body は overflow:hidden)ので、全面で切って差し支えない。
    数値入力だけは選択・編集できるよう戻す。                             */
 html,body{overscroll-behavior:none}
+
+/* --- 画面いっぱい・上詰め ----------------------------------------------
+   余白14pxのぶん横が痩せていたので0にして、画面の横幅を使い切る。
+   縦は中央寄せをやめて上端から並べる(スマホでは横幅で拡大率が決まり、
+   下に余りが出るため)。横方向は中央寄せのまま。                       */
+body{align-items:flex-start;padding:0}
 .window,.window *{
   touch-action:none;
   -webkit-user-select:none;user-select:none;
@@ -2471,7 +2477,9 @@ function fitScaleWrapInner(){
   wrap.style.marginBottom=""; // 前回の詰め分を戻してから実寸を測る
   const nativeW=wrap.offsetWidth,nativeH=wrap.offsetHeight;
   if(!nativeW||!nativeH)return;
-  const availW=innerWidth-28,availH=innerHeight-28;
+  // bodyの余白は0にしたので、引くのは .window の枠線(左右/上下 2pxずつ)だけ。
+  // ここを引かないと拡大後の幅が画面をわずかに超えて横スクロールが出る。
+  const availW=innerWidth-4,availH=innerHeight-4;
   const scale=Math.min(1,availW/nativeW,availH/nativeH);
   wrap.style.transform=`scale(${scale})`;
   // transformは見た目を縮めるだけで、レイアウト上の箱は元寸のまま残る。
