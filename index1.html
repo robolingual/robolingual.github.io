@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.67</title>
+<title>Robolingual v0.9.68</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -471,6 +471,29 @@ body{align-items:flex-start;padding:0}
 /* --- Ex は点灯ではなく点滅 --------------------------------------------
    単発トリガーなので状態として点灯させ続けない。A/B/Cの点灯色をそのまま
    借りて、押した瞬間だけ光らせる。                                     */
+/* --- BPM用テンキー -----------------------------------------------------
+   ネイティブのキーボードを出すと、iOS/Chrome が入力欄を見せようとして
+   画面をずらす。レイアウトビューポートは動かない作りなので JS から戻せず、
+   ずれたままになる。キーボードを出さずに済むよう自前で持つ。
+   scale-wrap の外に置き、縮小の影響を受けずに指で押せる大きさを保つ。 */
+.bpmpad{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.72);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.bpmpad[hidden]{display:none}
+.bpmpad-box{width:min(88vw,300px);padding:14px;border-radius:14px;
+  background:linear-gradient(#2a2a2a,#141414);border:1px solid #555;
+  box-shadow:0 10px 30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.12)}
+.bpmpad-head{display:flex;align-items:baseline;justify-content:space-between;
+  margin:0 2px 10px;font:700 11px/1 monospace;letter-spacing:.12em;color:#8a8a8a}
+.bpmpad-head b{font:700 30px/1 monospace;color:#aaff00;text-shadow:0 0 12px rgba(170,255,0,.5)}
+.bpmpad-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.bpmpad-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.bpmpad button{-webkit-appearance:none;appearance:none;border:1px solid #555;border-radius:9px;
+  background:linear-gradient(#3a3a3a,#202020);color:#e8e8e8;
+  font:700 20px/1 monospace;padding:14px 0;box-shadow:0 2px 0 #000;cursor:pointer}
+.bpmpad button:active{background:linear-gradient(#4a4a4a,#2a2a2a);transform:translateY(1px);box-shadow:none}
+.bpmpad button[data-k=ok]{background:linear-gradient(#c4ff5a,#74d400);color:#0c2400;border-color:#3d6b00;font-size:16px}
+.bpmpad button[data-k=cancel],.bpmpad button[data-k=clear],.bpmpad button[data-k=back]{font-size:16px;color:#bbb}
+
 .switches label.ex-flash{
   background:linear-gradient(#c4ff5a,#74d400);
   color:#0c2400;
@@ -561,7 +584,7 @@ body{align-items:flex-start;padding:0}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.67</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.68</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -665,7 +688,22 @@ body{align-items:flex-start;padding:0}
   </div>
   <div class="chaos-spare"></div>
 </div>
-</main></div></div>
+</main></div>
+<div class="bpmpad" id="bpmPad" hidden>
+  <div class="bpmpad-box">
+    <div class="bpmpad-head"><span>BPM</span><b id="bpmPadVal">110</b></div>
+    <div class="bpmpad-keys">
+      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
+      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
+      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
+      <button type="button" data-k="clear">C</button><button type="button" data-k="0">0</button><button type="button" data-k="back">&#9003;</button>
+    </div>
+    <div class="bpmpad-foot">
+      <button type="button" data-k="cancel">CANCEL</button><button type="button" data-k="ok">OK</button>
+    </div>
+  </div>
+</div>
+</div>
 <script>
 (()=>{"use strict";
 const sourceInput=document.getElementById("source"),filename=document.getElementById("filename"),wave=document.getElementById("wave"),waveBox=document.getElementById("waveBox"),mainAction=document.getElementById("mainAction"),bpmInput=document.getElementById("bpm"),translateButton=document.getElementById("translate"),status=document.getElementById("waveStatus"),results=document.getElementById("results"),performancePlay=document.getElementById("performancePlay"),performanceStop=document.getElementById("performanceStop"),performanceRec=document.getElementById("performanceRec"),downloadAll=document.getElementById("downloadAll");
@@ -1748,6 +1786,49 @@ document.addEventListener("selectionchange",()=>{
   const sel=document.getSelection();
   if(sel&&!sel.isCollapsed)sel.removeAllRanges();
 });
+
+// --- BPM用テンキー ------------------------------------------------------
+// タッチのときはネイティブのキーボードを出さず、自前のテンキーで入力する。
+// キーボードを出す限り、iOS/Chrome は入力欄を見せようと画面をずらし、
+// レイアウトビューポートが動かない作りのため JS からは戻せない。
+// フォーカスさせなければ、そもそもずれない。
+// マウスやキーボードのある環境は、今までどおり直接入力できる。
+(function bpmKeypad(){
+  const pad=document.getElementById("bpmPad"),valEl=document.getElementById("bpmPadVal");
+  const label=document.querySelector('label[for="bpm"]');
+  if(!pad||!valEl||!bpmInput||!label)return;
+  const MIN=Number(bpmInput.min)||60,MAX=Number(bpmInput.max)||260;
+  let buf="";
+  const show=()=>{valEl.textContent=buf!==""?buf:String(bpmInput.value||"")};
+  const close=()=>{pad.hidden=true};
+  const commit=()=>{
+    if(buf!==""){
+      const n=Math.min(MAX,Math.max(MIN,Number(buf)||MIN));
+      bpmInput.value=String(n);
+      // 既存の処理(波形の再描画など)は input を見ているので、同じ形で知らせる。
+      bpmInput.dispatchEvent(new Event("input",{bubbles:true}));
+      bpmInput.dispatchEvent(new Event("change",{bubbles:true}));
+    }
+    close();
+  };
+  label.addEventListener("pointerdown",e=>{
+    if(e.pointerType!=="touch")return; // マウスは既定の直接入力のまま
+    e.preventDefault();                // フォーカスさせない＝キーボードが出ない
+    bpmInput.blur();
+    buf="";show();pad.hidden=false;
+  });
+  pad.addEventListener("pointerdown",e=>{
+    const btn=e.target instanceof Element?e.target.closest("button[data-k]"):null;
+    if(!btn){if(e.target===pad)close();return} // 背景を叩いたら取消
+    e.preventDefault();
+    const k=btn.dataset.k;
+    if(k==="ok")return commit();
+    if(k==="cancel")return close();
+    if(k==="back"){buf=buf.slice(0,-1);return show()}
+    if(k==="clear"){buf="";valEl.textContent="";return}
+    if(buf.length<3){buf+=k;show()}
+  });
+})();
 
 // --- 長押し拡大よけ -----------------------------------------------------
 // iOS は長押しから選択やルーペに入り、そこから画面ごと拡大してしまう。
