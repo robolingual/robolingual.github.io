@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.70</title>
+<title>Robolingual v0.9.71</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -489,11 +489,14 @@ body.bpm-editing .bpm-panel{position:relative}
 @keyframes bpmCaret{0%,50%{opacity:1}50.01%,100%{opacity:0}}
 /* パッドをテンキーの見た目にする。無効状態の指定より強くする必要があるので
    body側のクラスも噛ませて詳細度を上げてある。 */
+/* パッドの内寸は 97x97。収まる上限は数字が48px、CANCEL/ENTERが27px。
+   記号と文字は必要な幅が違うので別々に持たせる。 */
 body.bpm-editing .switches label.bpm-key{
   background:linear-gradient(#3d3d3d,#1c1c1c);color:#e8e8e8;border-color:#666;
   box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.14);
-  font:700 15px/1 monospace;letter-spacing:0;opacity:1}
-body.bpm-editing .switches label.bpm-key.bpm-key-fn{color:#9a9a9a;font-size:11px}
+  font:700 34px/1 monospace;letter-spacing:0;opacity:1}
+body.bpm-editing .switches label.bpm-key.bpm-key-fn{color:#9a9a9a;font-size:24px}
+body.bpm-editing .switches label.bpm-key.bpm-key-word{font-size:18px}
 body.bpm-editing .switches label.bpm-key.bpm-key-ent{
   background:linear-gradient(#c4ff5a,#74d400);color:#0c2400;border-color:#3d6b00}
 body.bpm-editing .switches label.bpm-key:active{transform:translateY(1px)}
@@ -590,7 +593,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.70</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.71</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1793,7 +1796,8 @@ document.addEventListener("selectionchange",()=>{
   if(rows.length<4||rows.some(r=>r.length<4))return;
   const KEYS=[["7","8","9","BS"],["4","5","6","LEFT"],["1","2","3","RIGHT"],["0","00","CXL","ENT"]];
   const FACE={BS:"⌫",LEFT:"◀",RIGHT:"▶",CXL:"CANCEL",ENT:"ENTER"};
-  const FN={BS:1,LEFT:1,RIGHT:1,CXL:1};
+  const FN={BS:1,LEFT:1,RIGHT:1,CXL:1};   // 数字ではないキー(色を落とす)
+  const WORD={CXL:1,ENT:1};               // 語のキーは幅が要るので小さめに
   const MIN=Number(bpmInput.min)||60,MAX=Number(bpmInput.max)||260,MAXLEN=String(MAX).length;
   // fresh: 開いた直後は現在値を表示しているだけの状態。最初の数字で打ち直しになる。
   // ⌫やカーソル操作を先に使えば、現在値をそのまま直す使い方もできる。
@@ -1815,6 +1819,7 @@ document.addEventListener("selectionchange",()=>{
       lab.textContent=FACE[k]||k;
       lab.classList.add("bpm-key");
       if(FN[k])lab.classList.add("bpm-key-fn");
+      if(WORD[k])lab.classList.add("bpm-key-word");
       if(k==="ENT")lab.classList.add("bpm-key-ent");
     }));
     document.body.classList.add("bpm-editing");
@@ -1825,7 +1830,7 @@ document.addEventListener("selectionchange",()=>{
     on=false;
     rows.forEach(r=>r.forEach(lab=>{
       if(lab.dataset.padFace!==undefined){lab.textContent=lab.dataset.padFace;delete lab.dataset.padFace}
-      lab.classList.remove("bpm-key","bpm-key-fn","bpm-key-ent");
+      lab.classList.remove("bpm-key","bpm-key-fn","bpm-key-word","bpm-key-ent");
     }));
     document.body.classList.remove("bpm-editing");
     view.hidden=true;
