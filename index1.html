@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.69</title>
+<title>Robolingual v0.9.70</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -590,7 +590,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.69</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.70</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1791,13 +1791,13 @@ document.addEventListener("selectionchange",()=>{
   if(!bpmLabel||!view||!bpmInput)return;
   const rows=[...document.querySelectorAll(".mode")].map(m=>[...m.querySelectorAll(".switches label")]);
   if(rows.length<4||rows.some(r=>r.length<4))return;
-  const KEYS=[["7","8","9","BS"],["4","5","6","LEFT"],["1","2","3","RIGHT"],["0","00","UNDO","ENT"]];
-  const FACE={BS:"⌫",LEFT:"◀",RIGHT:"▶",UNDO:"UNDO",ENT:"ENTER"};
-  const FN={BS:1,LEFT:1,RIGHT:1,UNDO:1};
+  const KEYS=[["7","8","9","BS"],["4","5","6","LEFT"],["1","2","3","RIGHT"],["0","00","CXL","ENT"]];
+  const FACE={BS:"⌫",LEFT:"◀",RIGHT:"▶",CXL:"CANCEL",ENT:"ENTER"};
+  const FN={BS:1,LEFT:1,RIGHT:1,CXL:1};
   const MIN=Number(bpmInput.min)||60,MAX=Number(bpmInput.max)||260,MAXLEN=String(MAX).length;
   // fresh: 開いた直後は現在値を表示しているだけの状態。最初の数字で打ち直しになる。
   // ⌫やカーソル操作を先に使えば、現在値をそのまま直す使い方もできる。
-  let on=false,buf="",caret=0,hist=[],fresh=false;
+  let on=false,buf="",caret=0,fresh=false;
 
   const draw=()=>{
     view.textContent="";
@@ -1805,11 +1805,10 @@ document.addEventListener("selectionchange",()=>{
     view.appendChild(document.createElement("i")); // カーソル
     view.appendChild(document.createTextNode(buf.slice(caret)));
   };
-  const snap=()=>{hist.push([buf,caret]);if(hist.length>60)hist.shift()};
 
   function enter(){
     if(on)return;
-    on=true;buf=String(bpmInput.value||"");caret=buf.length;hist=[];fresh=true;
+    on=true;buf=String(bpmInput.value||"");caret=buf.length;fresh=true;
     rows.forEach((r,y)=>r.forEach((lab,x)=>{
       const k=KEYS[y][x];
       lab.dataset.padFace=lab.textContent; // 元の表示(A/B/C/Ex)を控える
@@ -1840,10 +1839,9 @@ document.addEventListener("selectionchange",()=>{
   }
   function press(k){
     if(k==="ENT")return leave(true);
-    if(k==="UNDO"){fresh=false;const h=hist.pop();if(h){buf=h[0];caret=h[1];draw()}return}
+    if(k==="CXL")return leave(false);
     if(k==="LEFT"){fresh=false;caret=Math.max(0,caret-1);draw();return}
     if(k==="RIGHT"){fresh=false;caret=Math.min(buf.length,caret+1);draw();return}
-    snap();
     // 開いた直後に数字を押したら、現在値を残さず打ち直す。
     if(fresh&&k!=="BS"){buf="";caret=0}
     fresh=false;
