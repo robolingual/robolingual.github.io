@@ -1637,6 +1637,10 @@ function applyMixerGains(){
 
 const activeDVoices={};
 const lastExTrigger={ninja:-Infinity,killer:-Infinity,banker:-Infinity,witch:-Infinity}; // 波形グリッドのフラッシュ表示用
+// Exの鳴り方。他の音に埋もれないよう、音量と音程をここで調整する。
+const EX_GAIN=1.3;                            // 1.0が元の音量
+const EX_SEMITONES=4;                         // 音階を半音いくつ上げるか(4=2音)
+const EX_PITCH_RATE=Math.pow(2,EX_SEMITONES/12);
 function triggerOneShotD(mode){
   // Dは4系統ループの仕組みから完全に独立：押した瞬間に単発で再生する（他の再生状況とは無関係）。
   // Dのバッファは常に「中身ぴったり1小節(4拍)」の長さで生成されているので、
@@ -1663,8 +1667,10 @@ function triggerOneShotD(mode){
   const gain=ctx.createGain();
   source.buffer=buffer;
   source.loop=false;
-  source.playbackRate.setValueAtTime(masterRate,ctx.currentTime);
-  gain.gain.setValueAtTime(1,ctx.currentTime);
+  // Exは他の音に埋もれやすいので、少し持ち上げて音程も上げる。
+  // 再生速度で音程を変えているため、上げたぶんだけ発音は短くなる。
+  source.playbackRate.setValueAtTime(masterRate*EX_PITCH_RATE,ctx.currentTime);
+  gain.gain.setValueAtTime(EX_GAIN,ctx.currentTime);
   source.connect(gain).connect(getModePanner(mode));
   activeDVoices[mode]={source,gain};
   const rate=Math.max(.05,masterRate);
