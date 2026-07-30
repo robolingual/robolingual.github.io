@@ -422,6 +422,23 @@ main{padding:16px 16px 30px;position:relative}
 .window{background:#000;border-color:#000;box-shadow:none}
 body{box-shadow:none}
 
+/* --- ブラウザのジェスチャーを全体で無効化 -------------------------------
+   スクロール・ピンチ拡大・ダブルタップ拡大・テキスト選択・長押しメニューが
+   割り込むと、スライダーやパッドの操作が途中で奪われる。
+   特にパンとテンポのスライダーには touch-action の指定が無く、
+   横ドラッグがページのスクロール扱いになって触りづらかった。
+   画面は scale-wrap でビューポートに収める作りでそもそもスクロールしない
+   (body は overflow:hidden)ので、全面で切って差し支えない。
+   数値入力だけは選択・編集できるよう戻す。                             */
+html,body{overscroll-behavior:none}
+.window,.window *{
+  touch-action:none;
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;
+  -webkit-tap-highlight-color:transparent}
+.window input[type=number],.window input[type=text]{
+  -webkit-user-select:text;user-select:text}
+
 /* --- パッドの Ex ------------------------------------------------------
    HTMLは元から "Ex" だが、label に掛かる text-transform:uppercase が
    "EX" に見せていた。この4つだけ大文字化を解く。                       */
@@ -1653,6 +1670,20 @@ function updateSpeedGauge(){
 updateSpeedGauge();
 speedSlider.addEventListener("input",()=>{setMasterRate(sliderToRate(speedSlider.value));updateSpeedGauge()});
 speedSlider.addEventListener("dblclick",resetMasterRate);
+// --- ブラウザのジェスチャー封じ(CSSで塞ぎきれない分) --------------------
+// touch-action では止まらないものだけをここで潰す。
+//   contextmenu : 長押しメニュー。操作の途中で出るとドラッグが切れる
+//   gesture*    : Safari独自のピンチ拡大イベント
+// 範囲はアプリ本体(.window)の中だけにして、外側の黒い余白では既定動作を残す。
+(function suppressBrowserGestures(){
+  const root=document.querySelector(".window");
+  if(!root)return;
+  root.addEventListener("contextmenu",e=>e.preventDefault());
+  for(const type of ["gesturestart","gesturechange","gestureend"]){
+    root.addEventListener(type,e=>e.preventDefault());
+  }
+})();
+
 // --- 目盛りをタップしてそのテンポへ -----------------------------------
 // 1.0×だけがクリックできる状態だったので、⅓×〜3.0×の全部を同じ扱いにする。
 // sliderToRate は 3^(-v/1000) なので、逆算は v = -1000 * log3(rate)。
