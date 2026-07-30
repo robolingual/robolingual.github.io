@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.63</title>
+<title>Robolingual v0.9.64</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -561,7 +561,7 @@ body{align-items:flex-start;padding:0}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.63</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.64</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -1684,6 +1684,46 @@ document.querySelectorAll(".switches label").forEach(label=>{
   label.addEventListener("click",e=>e.preventDefault()); // 二重発火を断つ
   // キーボード操作(スペース)だけはクリックで拾う。ポインタ由来は detail>0。
   input.addEventListener("click",e=>{if(e.detail===0)padPress(input)});
+});
+
+// --- 入力欄にフォーカスしたときの自動拡大よけ ---------------------------
+// 画面は scale-wrap で 720px の中身を縮めて収めているため、CSS上19pxの
+// BPM欄も実寸では10px程度にしかならない。iOS も Chrome も「読める大きさ」
+// まで勝手に拡大して、そこへ画面を寄せてしまう。
+// 拡大を禁じる指定は触る直前だけ入れ、離れたら外す。入れっぱなしにすると
+// 何かの拍子に拡大されたときピンチで戻せなくなる。
+(function suppressFocusZoom(){
+  const vp=document.querySelector('meta[name="viewport"]');
+  if(!vp)return;
+  const FREE="width=device-width,initial-scale=1,viewport-fit=cover";
+  const LOCK="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover";
+  const FIELDS="input[type=number],input[type=text],textarea";
+  let timer=0;
+  const editing=()=>{
+    const a=document.activeElement;
+    return !!(a&&a.matches&&a.matches(FIELDS));
+  };
+  const free=()=>{if(!editing())vp.content=FREE};
+  // フォーカスが決まる前に入れないと間に合わないので pointerdown で先回りする。
+  document.addEventListener("pointerdown",e=>{
+    if(!(e.target instanceof Element)||!e.target.closest(FIELDS))return;
+    clearTimeout(timer);
+    vp.content=LOCK;
+    timer=setTimeout(free,1200); // 結局フォーカスしなかった場合の戻し
+  },true);
+  document.addEventListener("focusout",()=>{
+    clearTimeout(timer);
+    timer=setTimeout(free,400);  // 戻すのはキーボードが閉じてから
+  },true);
+})();
+
+// iOS は長押しからも選択に入り、user-select や selectstart をすり抜けることがある。
+// 成立してしまった選択はここで畳んで、コピーメニューが居座らないようにする。
+document.addEventListener("selectionchange",()=>{
+  const a=document.activeElement;
+  if(a&&a.matches&&a.matches("input,textarea,[contenteditable]"))return;
+  const sel=document.getSelection();
+  if(sel&&!sel.isCollapsed)sel.removeAllRanges();
 });
 
 // --- ダブルタップ拡大よけ -----------------------------------------------
