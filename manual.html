@@ -226,7 +226,7 @@ html{scroll-behavior:smooth}
 
 <div class="title-block">
   <h1>音源をひとつ渡すと、4人が別々の流儀で演奏し直します</h1>
-  <p class="lede">ROBOLINGUAL は、手持ちの音声や動画から「ロボ語」を生成し、その場で組み替えて演奏するブラウザ上の楽器です。インストールは不要で、スマートフォン・タブレット・PC のいずれでも動作します。この説明書では、読み込みから書き出しまでの操作をひと通り扱います。</p>
+  <p class="lede">ROBOLINGUAL は、手持ちの音声や動画から「ロボ語」を生成し、その場で組み替えて演奏するブラウザ上の楽器です。インストールは不要で、スマートフォン・タブレット・PC のいずれでも動作します。</p>
   <div class="meta">
     <span>対応環境<b>iOS / Android / PC ブラウザ</b></span>
     <span>入力形式<b>WAV MP3 M4A AAC MP4 M4V MOV</b></span>
@@ -265,9 +265,9 @@ html{scroll-behavior:smooth}
 
     <section id="s1">
       <div class="sec-head"><span class="sec-n">01</span><h2 class="sec-t">音声を読み込む</h2></div>
-      <p>素材になる音を決めます。用意された音源を使う方法と、自分のファイルを使う方法があります。</p>
+      <p>素材になる音を決めます。</p>
       <h3>プリセットを使う</h3>
-      <p><span class="ctl">PRESET 1</span> <span class="ctl">PRESET 2</span> <span class="ctl">PRESET 3</span> のいずれかを押すと、読み込みから生成まで自動で進みます。まずはこちらで感触をつかむのが早道です。</p>
+      <p><span class="ctl">PRESET 1</span> <span class="ctl">PRESET 2</span> <span class="ctl">PRESET 3</span> のいずれかを押すと、読み込みから生成まで自動で進みます。</p>
       <h3>自分の音源を使う</h3>
       <ol class="steps">
         <li><span class="ctl">CHOOSE</span> を押してファイルを選びます。</li>
@@ -283,12 +283,12 @@ html{scroll-behavior:smooth}
 
     <section id="s2">
       <div class="sec-head"><span class="sec-n">02</span><h2 class="sec-t">ロボ語を生成する</h2></div>
-      <p><span class="ctl">TRANSLATE</span> を押すと、読み込んだ音声からアタック（音の立ち上がり）を検出し、それを素材として <strong>4キャラクター × 4バリエーション＝16パターン</strong>を生成します。波形の下に「Ready」と表示されれば完了です。</p>
-      <p>素材の切り出し位置は生成のたびに変わります。同じ音源でも、押すたびに異なる16パターンができます。</p>
+      <p><span class="ctl">TRANSLATE</span> を押すと、<strong>4キャラクター × 4バリエーション＝16パターン</strong>が生成されます。波形の下に「Ready」と表示されれば完了です。</p>
+      <p>同じ音源でも、押すたびに異なる16パターンができます。</p>
       <div class="note">
         <p><strong>生成前に BPM を決めておいてください。</strong>生成されるロボ語のテンポは、そのときの BPM を基準に決まります。</p>
       </div>
-      <p><span class="ctl">↑RESTART</span> は、生成したパターンを保ったままループを頭から鳴らし直します。演奏中に頭を合わせたいときに使います。</p>
+      <p><span class="ctl">↑RESTART</span> は、生成したパターンを保ったままループを頭から鳴らし直します。</p>
       <figure class="empty" id="fig2">
         <img src="docs/images/02-translate.png" alt="生成後の波形">
         <div class="plate">図 2 — 生成後の波形</div>
@@ -328,10 +328,10 @@ html{scroll-behavior:smooth}
         <li>パッドを押すと、その段がそのバリエーションに切り替わります。</li>
         <li>点灯中のパッドをもう一度押すと、消灯してその段が止まります。</li>
         <li><span class="ctl">Ex</span> は点灯したままにはならず、押した瞬間だけ光ります。</li>
-        <li><span class="ctl">Ex</span> は連打を前提としています。連打すると頭の一撃が繰り返され、フィルインとして機能します。</li>
+        <li><span class="ctl">Ex</span> は連打すると頭の一撃が繰り返され、フィルインになります。</li>
       </ul>
       <div class="note">
-        <p>4段は同じタイムラインの上を走ります。<strong>どう組み替えても頭がずれません。</strong></p>
+        <p><strong>どう組み替えても頭がずれません。</strong></p>
       </div>
       <figure class="empty" id="fig3">
         <img src="docs/images/03-pads.png" alt="16パッド">
@@ -362,9 +362,6 @@ html{scroll-behavior:smooth}
         <li><span class="ctl">◀</span> <span class="ctl">▶</span> でカーソルを動かし、途中に数字を挿し込めます。</li>
         <li><span class="ctl">ENTER</span> で確定、<span class="ctl">CANCEL</span> で取り消しです。<span class="ctl">BPM</span> をもう一度押しても取り消せます。</li>
       </ul>
-      <div class="note">
-        <p>パッドをテンキーにしているのは、<strong>端末のソフトウェアキーボードを出さないためです。</strong>キーボードが開くと画面が上にずれ、閉じても元の位置に戻らないためです。</p>
-      </div>
       <h3>PC</h3>
       <p><span class="ctl">BPM</span> の欄をクリックして、そのまま打ち込めます。テンキーは出ません。</p>
       <figure class="empty" id="fig5">
@@ -382,7 +379,7 @@ html{scroll-behavior:smooth}
         <li>目盛りをタップすると、その速度へ一度で移動します。</li>
         <li>ダブルクリックで <span class="ctl">1.0×</span> に戻ります。</li>
       </ul>
-      <p>上部には現在の倍率と、換算後の BPM が表示されます。速度を変えると、スリップループの刻みもその速度を基準に追随します。</p>
+      <p>上部には現在の倍率と、換算後の BPM が表示されます。</p>
       <figure class="empty" id="fig6">
         <img src="docs/images/06-speed.png" alt="速度スライダー">
         <div class="plate">図 6 — MASTER SPEED</div>
@@ -405,9 +402,9 @@ html{scroll-behavior:smooth}
         </table>
       </div>
       <h3>地獄ゾーン</h3>
-      <p>斜め45度付近、隣り合う2方向がほぼ均等に混ざる帯は「地獄ゾーン」です。専用の過激な処理がかかり、さらに<strong>そのとき鳴っている音から拾った亡霊のような声</strong>が薄く混ざります。外部の音源ではなく、その場の演奏から生成されます。</p>
+      <p>斜め45度付近、隣り合う2方向がほぼ均等に混ざる帯は「地獄ゾーン」です。専用の過激な処理がかかり、さらに<strong>そのとき鳴っている音から拾った亡霊のような声</strong>が薄く混ざります。</p>
       <h3>操作方式</h3>
-      <p>パッドは<strong>相対方式</strong>です。触った場所へ飛ぶのではなく、触ってから動かした分だけ現在地が動きます。細かい追い込みがしやすい方式です。</p>
+      <p>パッドは<strong>相対方式</strong>です。触った場所へ飛ぶのではなく、触ってから動かした分だけ現在地が動きます。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>操作子</th><th>動作</th></tr></thead>
@@ -431,8 +428,7 @@ html{scroll-behavior:smooth}
     <section id="s8">
       <div class="sec-head"><span class="sec-n">08</span><h2 class="sec-t">スリップループ</h2></div>
       <p>演奏中に<strong>波形を指で押さえる</strong>と、直前に鳴っていた音がその場で繰り返されます。いわゆるビートリピートです。</p>
-      <h3>仕組み</h3>
-      <p>押した瞬間に、その時点から遡って<strong>4拍ぶん</strong>を素材として切り取ります。押している間はこの素材を使い続け、途中で取り直すことはありません。素材の終わりは直前の拍に合わせてあるため、ループの頭にキックなどのアタックが乗ります。</p>
+      <p>押した瞬間から遡って<strong>4拍ぶん</strong>が素材になります。頭は拍に合うので、キックなどのアタックがループの先頭に来ます。</p>
       <h3>刻みを変える</h3>
       <p>波形は2段×3列の6区画に分かれています。押さえたまま指をずらすと刻みが変わります。</p>
       <div class="table-wrap">
@@ -444,11 +440,10 @@ html{scroll-behavior:smooth}
           </tbody>
         </table>
       </div>
-      <p>刻みを変えても<strong>音の出頭は動きません。</strong>素材の頭は固定で、ループの終わりだけが伸び縮みします。指を滑らせても鳴り直しが起きないため、途切れずに繋がります。</p>
-      <h3>表示</h3>
-      <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。帯はループ1周ぶんかけて白から透明へ落ちるので、刻みが細かいほど点滅が速くなります。</p>
-      <p>最も細かい <span class="ctl">1/32</span> だけは帯が数ピクセルしかなく見分けにくいため、白い芯のまわりが発光する表示になります。発光の色は折り返しごとに<strong>赤と黄で入れ替わります。</strong></p>
-      <p>指を離すと元の演奏に戻ります。タイムライン自体は止まっていないため、離した時点の現在地からそのまま続きます。</p>
+      <p>刻みを変えても<strong>音の出頭は動きません。</strong>指を滑らせても途切れません。</p>
+      <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。刻みが細かいほど点滅が速くなります。</p>
+      <p>最も細かい <span class="ctl">1/32</span> だけは、白い芯のまわりが<strong>赤と黄に交互に発光します。</strong></p>
+      <p>指を離すと元の演奏に戻ります。時間は止まっていないので、離した時点から続きます。</p>
       <figure class="empty" id="fig8">
         <img src="docs/images/08-slip.png" alt="スリップループ">
         <div class="plate">図 8 — スリップループ</div>
@@ -524,13 +519,13 @@ html{scroll-behavior:smooth}
     <section id="faq">
       <div class="sec-head"><span class="sec-n">B</span><h2 class="sec-t">困ったときは</h2></div>
       <h3>音が出ない</h3>
-      <p>ブラウザは、利用者が画面を一度操作するまで音を出せない仕様になっています。無音のままなら、どこかを一度タップしてから <span class="ctl">▶︎ PLAY</span> を押してください。</p>
+      <p>画面をどこか一度タップしてから <span class="ctl">▶︎ PLAY</span> を押してください。</p>
       <h3>パッドが押せない</h3>
-      <p>生成がまだ終わっていません。<span class="ctl">TRANSLATE</span> またはプリセットの読み込みが完了し、「Ready」と表示されるまでお待ちください。</p>
+      <p>「Ready」と表示されるまでお待ちください。生成が終わると押せるようになります。</p>
       <h3>生成結果が気に入らない</h3>
-      <p>もう一度 <span class="ctl">TRANSLATE</span> を押してください。使われる素材が変わり、別の16パターンになります。</p>
+      <p>もう一度 <span class="ctl">TRANSLATE</span> を押すと、別の16パターンになります。</p>
       <h3>動画を読み込むと音が小さい</h3>
-      <p>一部の動画は振幅が小さく見えることがあります。表示上は自動で拡大していますが、音声データそのものは変更していません。</p>
+      <p>波形は見やすいよう自動で拡大表示しています。音そのものは変わりません。</p>
     </section>
 
   </main>
