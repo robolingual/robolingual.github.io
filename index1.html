@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v0.9.68</title>
+<title>Robolingual v0.9.69</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -471,28 +471,34 @@ body{align-items:flex-start;padding:0}
 /* --- Ex は点灯ではなく点滅 --------------------------------------------
    単発トリガーなので状態として点灯させ続けない。A/B/Cの点灯色をそのまま
    借りて、押した瞬間だけ光らせる。                                     */
-/* --- BPM用テンキー -----------------------------------------------------
+/* --- BPMを16パッドで入力するモード -------------------------------------
    ネイティブのキーボードを出すと、iOS/Chrome が入力欄を見せようとして
    画面をずらす。レイアウトビューポートは動かない作りなので JS から戻せず、
-   ずれたままになる。キーボードを出さずに済むよう自前で持つ。
-   scale-wrap の外に置き、縮小の影響を受けずに指で押せる大きさを保つ。 */
-.bpmpad{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
-  background:rgba(0,0,0,.72);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
-.bpmpad[hidden]{display:none}
-.bpmpad-box{width:min(88vw,300px);padding:14px;border-radius:14px;
-  background:linear-gradient(#2a2a2a,#141414);border:1px solid #555;
-  box-shadow:0 10px 30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.12)}
-.bpmpad-head{display:flex;align-items:baseline;justify-content:space-between;
-  margin:0 2px 10px;font:700 11px/1 monospace;letter-spacing:.12em;color:#8a8a8a}
-.bpmpad-head b{font:700 30px/1 monospace;color:#aaff00;text-shadow:0 0 12px rgba(170,255,0,.5)}
-.bpmpad-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.bpmpad-foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-.bpmpad button{-webkit-appearance:none;appearance:none;border:1px solid #555;border-radius:9px;
-  background:linear-gradient(#3a3a3a,#202020);color:#e8e8e8;
-  font:700 20px/1 monospace;padding:14px 0;box-shadow:0 2px 0 #000;cursor:pointer}
-.bpmpad button:active{background:linear-gradient(#4a4a4a,#2a2a2a);transform:translateY(1px);box-shadow:none}
-.bpmpad button[data-k=ok]{background:linear-gradient(#c4ff5a,#74d400);color:#0c2400;border-color:#3d6b00;font-size:16px}
-.bpmpad button[data-k=cancel],.bpmpad button[data-k=clear],.bpmpad button[data-k=back]{font-size:16px;color:#bbb}
+   ずれたままになる。キーボードを出さずに済むよう、既にある16パッドを
+   そのままテンキーとして使う。                                         */
+/* 入力中の値とカーソル。BPM欄に重ねて出す。 */
+/* .bpm-panel の position は後段の指定で static になっているので、
+   重ねる基準にするためここで明示する。 */
+body.bpm-editing .bpm-panel{position:relative}
+#bpmEditView{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  gap:1px;background:#080808;color:#aaff00;font:700 17px/1 monospace;letter-spacing:.04em;
+  text-shadow:0 0 10px rgba(170,255,0,.55)}
+#bpmEditView[hidden]{display:none}
+#bpmEditView i{display:inline-block;width:2px;height:13px;background:#aaff00;
+  animation:bpmCaret 1s steps(1,end) infinite}
+@keyframes bpmCaret{0%,50%{opacity:1}50.01%,100%{opacity:0}}
+/* パッドをテンキーの見た目にする。無効状態の指定より強くする必要があるので
+   body側のクラスも噛ませて詳細度を上げてある。 */
+body.bpm-editing .switches label.bpm-key{
+  background:linear-gradient(#3d3d3d,#1c1c1c);color:#e8e8e8;border-color:#666;
+  box-shadow:0 3px 0 #000,inset 0 1px 0 rgba(255,255,255,.14);
+  font:700 15px/1 monospace;letter-spacing:0;opacity:1}
+body.bpm-editing .switches label.bpm-key.bpm-key-fn{color:#9a9a9a;font-size:11px}
+body.bpm-editing .switches label.bpm-key.bpm-key-ent{
+  background:linear-gradient(#c4ff5a,#74d400);color:#0c2400;border-color:#3d6b00}
+body.bpm-editing .switches label.bpm-key:active{transform:translateY(1px)}
+/* 入力中はBPM欄が押せることを分かりやすくする */
+body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 
 .switches label.ex-flash{
   background:linear-gradient(#c4ff5a,#74d400);
@@ -584,7 +590,7 @@ body{align-items:flex-start;padding:0}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.68</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v0.9.69</div></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -608,7 +614,7 @@ body{align-items:flex-start;padding:0}
     <div class="blank-key" aria-hidden="true"></div>
     <button id="chooseSource" class="choose-btn" type="button">CHOOSE</button>
     <button id="translate" type="button" disabled>TRANSLATE</button>
-    <label class="bpm-panel" for="bpm"><input id="bpm" type="number" min="60" max="260" step="1" value="110"><span>BPM</span></label>
+    <label class="bpm-panel" for="bpm"><input id="bpm" type="number" min="60" max="260" step="1" value="110"><span>BPM</span><div id="bpmEditView" hidden></div></label>
   </div>
 </div>
 
@@ -689,20 +695,6 @@ body{align-items:flex-start;padding:0}
   <div class="chaos-spare"></div>
 </div>
 </main></div>
-<div class="bpmpad" id="bpmPad" hidden>
-  <div class="bpmpad-box">
-    <div class="bpmpad-head"><span>BPM</span><b id="bpmPadVal">110</b></div>
-    <div class="bpmpad-keys">
-      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button>
-      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button>
-      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button>
-      <button type="button" data-k="clear">C</button><button type="button" data-k="0">0</button><button type="button" data-k="back">&#9003;</button>
-    </div>
-    <div class="bpmpad-foot">
-      <button type="button" data-k="cancel">CANCEL</button><button type="button" data-k="ok">OK</button>
-    </div>
-  </div>
-</div>
 </div>
 <script>
 (()=>{"use strict";
@@ -1787,46 +1779,101 @@ document.addEventListener("selectionchange",()=>{
   if(sel&&!sel.isCollapsed)sel.removeAllRanges();
 });
 
-// --- BPM用テンキー ------------------------------------------------------
-// タッチのときはネイティブのキーボードを出さず、自前のテンキーで入力する。
-// キーボードを出す限り、iOS/Chrome は入力欄を見せようと画面をずらし、
-// レイアウトビューポートが動かない作りのため JS からは戻せない。
-// フォーカスさせなければ、そもそもずれない。
-// マウスやキーボードのある環境は、今までどおり直接入力できる。
-(function bpmKeypad(){
-  const pad=document.getElementById("bpmPad"),valEl=document.getElementById("bpmPadVal");
-  const label=document.querySelector('label[for="bpm"]');
-  if(!pad||!valEl||!bpmInput||!label)return;
-  const MIN=Number(bpmInput.min)||60,MAX=Number(bpmInput.max)||260;
-  let buf="";
-  const show=()=>{valEl.textContent=buf!==""?buf:String(bpmInput.value||"")};
-  const close=()=>{pad.hidden=true};
-  const commit=()=>{
-    if(buf!==""){
+// --- BPMを16パッドで入力する --------------------------------------------
+// ネイティブのキーボードを出す限り、iOS/Chrome は入力欄を見せようとして
+// 画面をずらす。レイアウトビューポートは動かない作りなので JS からは戻せず、
+// ずれたままになる。フォーカスさせず、既にある16パッドをテンキーに
+// 切り替えて入力する。配列は電卓と同じ 7-8-9 / 4-5-6 / 1-2-3 / 0-00 で、
+// 右端の列が Backspace / ← / → / Enter。
+(function bpmPadKeypad(){
+  const bpmLabel=document.querySelector('label[for="bpm"]');
+  const view=document.getElementById("bpmEditView");
+  if(!bpmLabel||!view||!bpmInput)return;
+  const rows=[...document.querySelectorAll(".mode")].map(m=>[...m.querySelectorAll(".switches label")]);
+  if(rows.length<4||rows.some(r=>r.length<4))return;
+  const KEYS=[["7","8","9","BS"],["4","5","6","LEFT"],["1","2","3","RIGHT"],["0","00","UNDO","ENT"]];
+  const FACE={BS:"⌫",LEFT:"◀",RIGHT:"▶",UNDO:"UNDO",ENT:"ENTER"};
+  const FN={BS:1,LEFT:1,RIGHT:1,UNDO:1};
+  const MIN=Number(bpmInput.min)||60,MAX=Number(bpmInput.max)||260,MAXLEN=String(MAX).length;
+  // fresh: 開いた直後は現在値を表示しているだけの状態。最初の数字で打ち直しになる。
+  // ⌫やカーソル操作を先に使えば、現在値をそのまま直す使い方もできる。
+  let on=false,buf="",caret=0,hist=[],fresh=false;
+
+  const draw=()=>{
+    view.textContent="";
+    view.appendChild(document.createTextNode(buf.slice(0,caret)));
+    view.appendChild(document.createElement("i")); // カーソル
+    view.appendChild(document.createTextNode(buf.slice(caret)));
+  };
+  const snap=()=>{hist.push([buf,caret]);if(hist.length>60)hist.shift()};
+
+  function enter(){
+    if(on)return;
+    on=true;buf=String(bpmInput.value||"");caret=buf.length;hist=[];fresh=true;
+    rows.forEach((r,y)=>r.forEach((lab,x)=>{
+      const k=KEYS[y][x];
+      lab.dataset.padFace=lab.textContent; // 元の表示(A/B/C/Ex)を控える
+      lab.textContent=FACE[k]||k;
+      lab.classList.add("bpm-key");
+      if(FN[k])lab.classList.add("bpm-key-fn");
+      if(k==="ENT")lab.classList.add("bpm-key-ent");
+    }));
+    document.body.classList.add("bpm-editing");
+    view.hidden=false;draw();
+  }
+  function leave(commit){
+    if(!on)return;
+    on=false;
+    rows.forEach(r=>r.forEach(lab=>{
+      if(lab.dataset.padFace!==undefined){lab.textContent=lab.dataset.padFace;delete lab.dataset.padFace}
+      lab.classList.remove("bpm-key","bpm-key-fn","bpm-key-ent");
+    }));
+    document.body.classList.remove("bpm-editing");
+    view.hidden=true;
+    if(commit&&buf!==""){
       const n=Math.min(MAX,Math.max(MIN,Number(buf)||MIN));
       bpmInput.value=String(n);
       // 既存の処理(波形の再描画など)は input を見ているので、同じ形で知らせる。
       bpmInput.dispatchEvent(new Event("input",{bubbles:true}));
       bpmInput.dispatchEvent(new Event("change",{bubbles:true}));
     }
-    close();
-  };
-  label.addEventListener("pointerdown",e=>{
-    if(e.pointerType!=="touch")return; // マウスは既定の直接入力のまま
+  }
+  function press(k){
+    if(k==="ENT")return leave(true);
+    if(k==="UNDO"){fresh=false;const h=hist.pop();if(h){buf=h[0];caret=h[1];draw()}return}
+    if(k==="LEFT"){fresh=false;caret=Math.max(0,caret-1);draw();return}
+    if(k==="RIGHT"){fresh=false;caret=Math.min(buf.length,caret+1);draw();return}
+    snap();
+    // 開いた直後に数字を押したら、現在値を残さず打ち直す。
+    if(fresh&&k!=="BS"){buf="";caret=0}
+    fresh=false;
+    if(k==="BS"){if(caret>0){buf=buf.slice(0,caret-1)+buf.slice(caret);caret--}}
+    else if(buf.length+k.length<=MAXLEN){buf=buf.slice(0,caret)+k+buf.slice(caret);caret+=k.length}
+    draw();
+  }
+
+  // 入力中はパッドをテンキーとして扱う。捕捉段階で止めるので padPress は動かない。
+  document.addEventListener("pointerdown",e=>{
+    if(!on)return;
+    const lab=e.target instanceof Element?e.target.closest(".switches label"):null;
+    if(!lab)return;
+    e.preventDefault();e.stopPropagation();
+    for(let y=0;y<4;y++)for(let x=0;x<4;x++)if(rows[y][x]===lab)press(KEYS[y][x]);
+  },true);
+
+  let swallowClick=false;
+  bpmLabel.addEventListener("pointerdown",e=>{
+    if(e.pointerType!=="touch")return; // マウスは今までどおり直接入力できる
     e.preventDefault();                // フォーカスさせない＝キーボードが出ない
-    bpmInput.blur();
-    buf="";show();pad.hidden=false;
+    swallowClick=true;
+    if(on)leave(false); else enter();   // 入力中にもう一度押したら取消
   });
-  pad.addEventListener("pointerdown",e=>{
-    const btn=e.target instanceof Element?e.target.closest("button[data-k]"):null;
-    if(!btn){if(e.target===pad)close();return} // 背景を叩いたら取消
-    e.preventDefault();
-    const k=btn.dataset.k;
-    if(k==="ok")return commit();
-    if(k==="cancel")return close();
-    if(k==="back"){buf=buf.slice(0,-1);return show()}
-    if(k==="clear"){buf="";valEl.textContent="";return}
-    if(buf.length<3){buf+=k;show()}
+  // pointerdown を止めてもタッチでは click が届き、label 経由で input が
+  // フォーカスされてキーボードが開いてしまう。その分もここで断つ。
+  bpmLabel.addEventListener("click",e=>{
+    if(!swallowClick)return;
+    swallowClick=false;e.preventDefault();
+    bpmInput.blur();
   });
 })();
 
