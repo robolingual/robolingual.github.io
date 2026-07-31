@@ -95,6 +95,17 @@ body{
 }
 .meta b{display:block;color:var(--ink);font-weight:600;letter-spacing:.02em;margin-top:.15rem}
 
+/* --- アプリを開くリンク。説明書の入口なので扉に置く --- */
+.launch{
+  display:inline-flex;align-items:center;gap:.6rem;margin-top:1.6rem;
+  padding:.7rem 1.15rem;border:1px solid var(--accent);border-radius:3px;
+  color:var(--accent);text-decoration:none;background:transparent;
+  font-family:var(--font-mono);font-size:.82rem;letter-spacing:.1em;font-weight:600;
+}
+.launch:hover{background:var(--accent);color:var(--paper)}
+.launch:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.launch span{font-size:1.05em;line-height:1}
+
 /* --- 本体は索引＋一段組み --- */
 .sheet{
   max-width:1140px;margin:0 auto;padding:0 clamp(1.25rem,4vw,2.5rem) 4rem;
@@ -229,6 +240,7 @@ html{scroll-behavior:smooth}
   <h1>誰でもカンタン！<br>
      スマホひとつでロボ語トーク。</h1>
   <p class="lede">ROBOLINGUAL は、手持ちの音声や動画から誰でも簡単に「ロボ語」を生成！スマートフォン・タブレット・PC のいずれでも動作します。</p>
+  <a class="launch" href="./"><span>&#9654;</span>ROBOLINGUAL を開く</a>
   <div class="meta">
     <span>対応環境<b>iOS / Android / PC ブラウザ</b></span>
     <span>入力形式<b>WAV MP3 M4A AAC MP4 M4V MOV</b></span>

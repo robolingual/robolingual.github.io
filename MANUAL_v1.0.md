@@ -1,5 +1,7 @@
 ROBOLINGUAL v1.0 マニュアル
 
+▶ アプリを開く： https://robolingual.github.io/
+
 <!-- 画像スロット: アプリ全体のスクリーンショット
      使うときは次の行のコメントを外す
 ![ROBOLINGUAL v1.0](docs/images/00-overview.png)
