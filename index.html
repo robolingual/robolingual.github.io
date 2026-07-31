@@ -515,6 +515,23 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 .vidprog-box span{display:block;margin-top:10px;font:700 11px/1.4 monospace;letter-spacing:.22em;color:#8fa87a}
 .vidprog-box i{display:block;margin-top:14px;font:400 12px/1.5 sans-serif;font-style:normal;color:#7e7e7e}
 
+/* --- SKIN ボタン ------------------------------------------------------
+   もとは装飾の空きキーだった。見た目はそのままに、文字だけ載せる。   */
+.bay-side>#skinBtn{color:#8a8a8a;font:700 10px/1 monospace;letter-spacing:.16em;cursor:pointer;
+  padding:0;display:flex;align-items:center;justify-content:center}
+.bay-side>#skinBtn:hover{color:#aaff00}
+.bay-side>#skinBtn.on{color:#aaff00}
+.skinpick{position:fixed;inset:0;z-index:9996;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.84);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.skinpick[hidden]{display:none}
+.skinpick-box{text-align:center;padding:26px 30px;max-width:min(90vw,400px)}
+.skinpick-box b{display:block;font:700 26px/1 monospace;letter-spacing:.2em;color:#aaff00}
+.skinpick-box span{display:block;margin:12px 0 4px;font:400 13px/1.6 sans-serif;color:#b9b9b9}
+.skinpick-box button{margin:14px 5px 0;font:700 11px/1 monospace;letter-spacing:.1em;
+  background:#1c1c1c;color:#ccc;border:1px solid #444;border-radius:4px;padding:10px 15px;cursor:pointer}
+.skinpick-box button:hover{background:#2a2a2a}
+#skinChoose{border-color:#4f6b1e!important;color:#aaff00!important}
+
 /* --- MIDI 機器 --------------------------------------------------------
    繋がっていないときは何も出さない。パネルに常設すると、
    使わない人にとっては意味のない飾りになるため。                       */
@@ -648,7 +665,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
     </div>
   </div>
   <div class="bay bay-side">
-    <div class="blank-key" aria-hidden="true"></div>
+    <button id="skinBtn" class="blank-key" type="button">SKIN</button>
     <button id="chooseSource" class="choose-btn" type="button">CHOOSE</button>
     <button id="translate" type="button" disabled>TRANSLATE</button>
     <label class="bpm-panel" for="bpm"><input id="bpm" type="number" min="60" max="260" step="1" value="110"><span>BPM</span><div id="bpmEditView" hidden></div></label>
@@ -732,6 +749,16 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
   <div class="chaos-spare"></div>
 </div>
 </main></div>
+<div class="skinpick" id="skinPick" hidden>
+  <div class="skinpick-box">
+    <b>SKIN</b>
+    <span>筐体の背景に使う画像を選べます。</span>
+    <button type="button" id="skinChoose">画像を選ぶ</button>
+    <button type="button" id="skinReset">元に戻す</button>
+    <button type="button" id="skinCancel">やめる</button>
+  </div>
+</div>
+<input id="skinFile" type="file" accept="image/*" hidden>
 <div class="midi-learn" id="midiLearn" hidden>
   <div class="midi-learn-box">
     <b id="midiLearnTarget">—</b>
@@ -2067,6 +2094,83 @@ document.addEventListener("selectionchange",()=>{
     swallowClick=false;e.preventDefault();
     bpmInput.blur();
   });
+})();
+
+// --- SKIN ---------------------------------------------------------------
+// 筐体の背景を差し替える。#deckSkin の --deck-skin 一箇所で決まっているので、
+// そこへ入れ替えるだけで済む。
+// 選んだ画像は縮小してから保存する。元のまま持つと数MBになり、
+// localStorage の上限(おおむね5MB)を超えて黙って保存に失敗するため。
+(function skinSupport(){
+  const btn=document.getElementById("skinBtn");
+  const panel=document.getElementById("skinPick");
+  const file=document.getElementById("skinFile");
+  const layer=document.getElementById("deckSkin");
+  if(!btn||!panel||!file||!layer)return;
+
+  const KEY="robolingual.skin.v1";
+  const MAX_W=1600;          // 筐体の実寸は720px。倍あれば足りる。
+  const QUALITY=.82;
+
+  const apply=url=>{layer.style.setProperty("--deck-skin",`url("${url}")`)};
+  const clear=()=>{layer.style.removeProperty("--deck-skin")};   // CSS既定の skin.jpg に戻る
+
+  // 起動時に、保存してあれば当てる
+  try{
+    const saved=localStorage.getItem(KEY);
+    if(saved){apply(saved);btn.classList.add("on")}
+  }catch(_){}
+
+  const open=()=>{panel.hidden=false};
+  const close=()=>{panel.hidden=true};
+  btn.addEventListener("click",open);
+  document.getElementById("skinCancel").addEventListener("click",close);
+  document.getElementById("skinChoose").addEventListener("click",()=>{file.click()});
+  document.getElementById("skinReset").addEventListener("click",()=>{
+    try{localStorage.removeItem(KEY)}catch(_){}
+    clear();btn.classList.remove("on");close();
+  });
+
+  file.addEventListener("change",async()=>{
+    const f=file.files&&file.files[0];
+    file.value="";                       // 同じ画像を選び直せるようにする
+    if(!f)return;
+    try{
+      const url=await shrink(f);
+      apply(url);
+      btn.classList.add("on");
+      try{localStorage.setItem(KEY,url)}
+      catch(_){
+        // 保存だけ失敗しても、今の見た目は保つ。次回起動時に戻るだけ。
+        console.warn("スキンを保存できませんでした。今回限りの適用になります。");
+      }
+      close();
+    }catch(error){
+      console.warn("この画像は読めませんでした。",error);
+      close();
+    }
+  });
+
+  // 長辺を MAX_W まで縮めて JPEG にする
+  function shrink(blob){
+    return new Promise((resolve,reject)=>{
+      const url=URL.createObjectURL(blob);
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          const scale=Math.min(1,MAX_W/Math.max(img.width,img.height));
+          const w=Math.max(1,Math.round(img.width*scale));
+          const h=Math.max(1,Math.round(img.height*scale));
+          const c=document.createElement("canvas");c.width=w;c.height=h;
+          c.getContext("2d").drawImage(img,0,0,w,h);
+          resolve(c.toDataURL("image/jpeg",QUALITY));
+        }catch(e){reject(e)}
+        finally{URL.revokeObjectURL(url)}
+      };
+      img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("画像として読めません"))};
+      img.src=url;
+    });
+  }
 })();
 
 // --- MIDI機器 -----------------------------------------------------------
