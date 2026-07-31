@@ -44,6 +44,8 @@ jobs:
         with:
           name: ROBOLINGUAL-windows
           if-no-files-found: error
+          # ワークスペースなので成果物は desktop/target/ に出る。
+          # src-tauri/target/ ではない。
           path: |
-            desktop/src-tauri/target/release/bundle/msi/*.msi
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/target/release/bundle/msi/*.msi
+            desktop/target/release/bundle/nsis/*.exe
