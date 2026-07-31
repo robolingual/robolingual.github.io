@@ -515,6 +515,28 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 .vidprog-box span{display:block;margin-top:10px;font:700 11px/1.4 monospace;letter-spacing:.22em;color:#8fa87a}
 .vidprog-box i{display:block;margin-top:14px;font:400 12px/1.5 sans-serif;font-style:normal;color:#7e7e7e}
 
+/* --- MIDI 機器 --------------------------------------------------------
+   繋がっていないときは何も出さない。パネルに常設すると、
+   使わない人にとっては意味のない飾りになるため。                       */
+/* .version が右端を絶対配置で占めているので、その左に並べる。
+   通常配置のままだと版数の下に潜って押せない。 */
+#midiBtn{position:absolute;right:56px;font:700 9px/1 monospace;letter-spacing:.14em;
+  background:#111;color:#5a6b3a;border:1px solid #2f3a1e;border-radius:3px;
+  padding:3px 6px;cursor:pointer}
+#midiBtn.on{color:#aaff00;border-color:#4f6b1e;box-shadow:0 0 8px rgba(170,255,0,.25)}
+.midi-learn{position:fixed;inset:0;z-index:9997;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.midi-learn[hidden]{display:none}
+.midi-learn-box{text-align:center;padding:26px 30px;max-width:min(90vw,420px)}
+.midi-learn-box b{display:block;font:700 clamp(26px,7vw,42px)/1.2 monospace;color:#aaff00;
+  text-shadow:0 0 18px rgba(170,255,0,.45)}
+.midi-learn-box span{display:block;margin-top:12px;font:400 13px/1.6 sans-serif;color:#b9b9b9}
+.midi-learn-box i{display:block;margin-top:6px;font:700 11px/1 monospace;letter-spacing:.14em;
+  color:#7a7a7a;font-style:normal}
+.midi-learn-box button{margin:18px 5px 0;font:700 11px/1 monospace;letter-spacing:.1em;
+  background:#1c1c1c;color:#ccc;border:1px solid #444;border-radius:4px;padding:9px 14px;cursor:pointer}
+.midi-learn-box button:hover{background:#2a2a2a}
+
 .switches label.ex-flash{
   background:linear-gradient(#c4ff5a,#74d400);
   color:#0c2400;
@@ -605,7 +627,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v1.0</div></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v1.0</div><button id="midiBtn" type="button" hidden>MIDI</button></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -710,6 +732,15 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
   <div class="chaos-spare"></div>
 </div>
 </main></div>
+<div class="midi-learn" id="midiLearn" hidden>
+  <div class="midi-learn-box">
+    <b id="midiLearnTarget">—</b>
+    <span id="midiLearnHint">機器側で操作してください</span>
+    <i id="midiLearnStep">1 / 20</i>
+    <button type="button" id="midiLearnSkip">とばす</button>
+    <button type="button" id="midiLearnCancel">やめる</button>
+  </div>
+</div>
 <div class="vidprog" id="videoProgress" hidden>
   <div class="vidprog-box"><b id="videoProgressPct">0%</b><span>READING VIDEO AUDIO</span><i>この画面を開いたままにしてください</i></div>
 </div>
@@ -2035,6 +2066,114 @@ document.addEventListener("selectionchange",()=>{
     if(!swallowClick)return;
     swallowClick=false;e.preventDefault();
     bpmInput.blur();
+  });
+})();
+
+// --- MIDI機器 -----------------------------------------------------------
+// 16パッドをアプリの16パッドへ、ノブ4つをPANへ。
+// CCP16はパッドの音程もCC番号も機種側で編集できるので、番号を決め打ちすると
+// 設定を変えた瞬間に壊れる。実際に操作してもらって憶える方式にする。
+// 憶えた対応は localStorage に残すので、次からは繋ぐだけで使える。
+(function midiSupport(){
+  const btn=document.getElementById("midiBtn");
+  const panel=document.getElementById("midiLearn");
+  if(!btn||!panel||typeof navigator.requestMIDIAccess!=="function")return;
+
+  const KEY="robolingual.midi.map.v1";
+  const PAD_IDS=[];
+  for(const mode of ["ninja","killer","banker","witch"])
+    for(const v of ["A","B","C","D"])PAD_IDS.push(mode+v);
+  const PAN_MODES=["ninja","killer","banker","witch"];
+  const LABEL={A:"A",B:"B",C:"C",D:"Ex"};
+
+  // note番号→パッドid / CC番号→PANのキャラ
+  let map={notes:{},ccs:{}};
+  try{const raw=localStorage.getItem(KEY);if(raw)map=JSON.parse(raw)}catch(_){}
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(map))}catch(_){}};
+
+  let learning=null;   // 割り当て中の状態
+
+  function applyNote(note){
+    const id=map.notes[note];
+    if(!id)return;
+    const input=document.getElementById(id);
+    if(input)padPress(input);       // 画面のパッドを押したのと同じ扱い
+  }
+  function applyCC(cc,value){
+    const mode=map.ccs[cc];
+    if(!mode)return;
+    const el=document.querySelector(`.pan-slider[data-mode="${mode}"]`);
+    if(!el)return;
+    // MIDIの0..127をPANの-100..100へ。64を中央に合わせる。
+    el.value=String(Math.round((value-64)/63*100));
+    el.dispatchEvent(new Event("input",{bubbles:true}));
+  }
+
+  // --- 割り当て ---
+  function steps(){
+    const out=[];
+    PAD_IDS.forEach(id=>{
+      const mode=id.slice(0,-1),v=id.slice(-1);
+      out.push({kind:"note",id,label:`${mode.toUpperCase()} ${LABEL[v]}`,hint:"このパッドに当てる鍵を叩いてください"});
+    });
+    PAN_MODES.forEach(mode=>{
+      out.push({kind:"cc",mode,label:`${mode.toUpperCase()} PAN`,hint:"このPANに当てるノブを回してください"});
+    });
+    return out;
+  }
+  function showStep(){
+    const s=learning.list[learning.i];
+    document.getElementById("midiLearnTarget").textContent=s.label;
+    document.getElementById("midiLearnHint").textContent=s.hint;
+    document.getElementById("midiLearnStep").textContent=`${learning.i+1} / ${learning.list.length}`;
+  }
+  function startLearn(){
+    // 憶え直しなので、前の対応は捨ててから始める。
+    // 残したままだと、同じ鍵を別のパッドに当て直したときに両方効いてしまう。
+    map={notes:{},ccs:{}};
+    learning={list:steps(),i:0};
+    panel.hidden=false;showStep();
+  }
+  function endLearn(){learning=null;panel.hidden=true;save()}
+  function nextStep(){
+    learning.i++;
+    if(learning.i>=learning.list.length)endLearn();else showStep();
+  }
+  function learnFrom(kind,number){
+    const s=learning.list[learning.i];
+    if(s.kind!==kind)return;                       // パッドの番でノブを回しても進めない
+    if(kind==="note")map.notes[number]=s.id;else map.ccs[number]=s.mode;
+    nextStep();
+  }
+
+  document.getElementById("midiLearnSkip").addEventListener("click",()=>{if(learning)nextStep()});
+  document.getElementById("midiLearnCancel").addEventListener("click",()=>{if(learning)endLearn()});
+  btn.addEventListener("click",startLearn);
+
+  function onMessage(e){
+    const [status,d1,d2]=e.data;
+    const type=status&0xf0;
+    if(type===0x90&&d2>0){                          // ノートオン
+      if(learning)learnFrom("note",d1);else applyNote(d1);
+    }else if(type===0xb0){                          // コントロールチェンジ
+      // ノブは回すと連続で飛んでくる。割り当て中は最初の1つで確定させる。
+      if(learning)learnFrom("cc",d1);else applyCC(d1,d2);
+    }
+  }
+
+  navigator.requestMIDIAccess({sysex:false}).then(access=>{
+    const hook=()=>{
+      let count=0;
+      access.inputs.forEach(inp=>{inp.onmidimessage=onMessage;count++});
+      btn.hidden=count===0;
+      btn.classList.toggle("on",count>0);
+      btn.title=count>0?`MIDI機器 ${count}台 — 押すと割り当て`:"";
+    };
+    hook();
+    access.onstatechange=hook;                      // 抜き差しに追従する
+  }).catch(error=>{
+    // 権限が下りない環境もある。その場合は何も出さない。
+    console.warn("MIDIを使えません。",error);
   });
 })();
 
