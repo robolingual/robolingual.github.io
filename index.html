@@ -848,7 +848,7 @@ document.querySelectorAll(".preset-btn[data-preset]").forEach(btn=>{
 loadPreset(1);
 
 // CHOOSE: mainActionと同じくファイル選択ダイアログを開くだけ(状態管理はmainAction側に一本化)
-document.getElementById("chooseSource").addEventListener("click",()=>sourceInput.click());
+document.getElementById("chooseSource").addEventListener("click",()=>openSourcePicker());
 
 // RESTART: DJプレイでの頭出し用。現在のミキサー(ループA/B/C)を即座に1小節目の頭から再スタートする。
 // ワンショット(Ex)や演奏中のタイムラインには触れない。
@@ -866,8 +866,23 @@ sourceInput.addEventListener("click",()=>{
 
 window.addEventListener("focus",()=>{setTimeout(()=>{if(mainActionMode==="busy"&&sourceInput.files.length===0)setMainAction("choose","CHOOSE SOURCE")},500)});
 
+// デスクトップはパスが要るので Tauri のダイアログ、Web は今まで通り input を開く。
+// どちらも同じ change ハンドラへ流し込み、受け口を1本にしておく。
+let injectedSource=null;
+async function openSourcePicker(){
+  if(!IS_DESKTOP){sourceInput.click();return}
+  try{
+    const picked=await desktopPickSource();
+    if(!picked)return;
+    injectedSource=picked;
+    sourceInput.dispatchEvent(new Event("change"));
+  }catch(error){
+    console.warn("ファイル選択に失敗しました。",error);
+  }
+}
 sourceInput.addEventListener("change",async()=>{
-  const file=sourceInput.files&&sourceInput.files[0];
+  const file=injectedSource||(sourceInput.files&&sourceInput.files[0]);
+  injectedSource=null;
   // ピッカーをキャンセルしただけなら、現在の素材とTRANSLATEをそのまま維持する。
   if(!file){
     setMainAction("choose","CHOOSE SOURCE");
@@ -927,6 +942,17 @@ function isVideoFile(file){
 }
 
 async function decodeSourceFile(ctx,file,isVideo){
+  // デスクトップはパスからネイティブでデコードする。動画でも待ち時間が出ない。
+  // 扱えない形式だったときだけ、実体を読み出して従来の経路へ戻す。
+  if(file&&file.__desktopPath){
+    try{
+      return await desktopDecode(ctx,file.__desktopPath);
+    }catch(error){
+      console.warn("ネイティブのデコードに失敗。再生経由に戻します。",error);
+      file=await desktopReadAsFile(file.__desktopPath,file.name);
+      isVideo=isVideoFile(file);
+    }
+  }
   if(!isVideo){
     const data=await file.arrayBuffer();
     return await ctx.decodeAudioData(data.slice(0));
@@ -1203,7 +1229,7 @@ async function runTranslate(){
 }
 
 mainAction.addEventListener("click",async()=>{
-  if(mainActionMode==="choose"){sourceInput.click();return}
+  if(mainActionMode==="choose"){openSourcePicker();return}
   if(mainActionMode==="read"&&pendingVideoStart){const start=pendingVideoStart;pendingVideoStart=null;await start();return}
 });
 translateButton.addEventListener("click",runTranslate);
@@ -1254,7 +1280,68 @@ async function downloadAllZip(){
   finally{downloadAll.disabled=false}
 }
 
+// --- デスクトップ版(Tauri)との橋渡し ------------------------------------
+// Web版では IS_DESKTOP が false になり、以下はどれも通らない。
+// 触るのは3箇所だけ: ファイル選択・デコード・保存。
+const IS_DESKTOP=typeof window!=="undefined"&&!!window.__TAURI__;
+const tauri=()=>window.__TAURI__;
+
+// 選んだファイルのパス。ネイティブ側はこれを受け取って直接デコードする。
+// ブラウザの File にはパスが無いので、デスクトップでは Tauri のダイアログを使う。
+async function desktopPickSource(){
+  const path=await tauri().dialog.open({multiple:false,filters:[
+    {name:"音声・動画",extensions:["wav","mp3","m4a","aac","flac","ogg","oga","opus","aif","aiff","mp4","m4v","mov","qt","webm","3gp","avi","mkv"]}
+  ]});
+  if(!path)return null;
+  // 以降の処理は File のつもりで name を読む。パスは __desktopPath に持たせる。
+  return{name:String(path).split(/[\\/]/).pop(),type:"",__desktopPath:String(path)};
+}
+
+// ネイティブでデコードする。動画でも実時間の待ちが発生しない。
+// 戻りは生のバイト列。先頭4バイトがサンプリングレート、以降が f32 の波形。
+async function desktopDecode(ctx,path){
+  const res=await tauri().core.invoke("decode_audio",{path});
+  const ab=res instanceof ArrayBuffer?res:res.buffer;
+  if(!ab||ab.byteLength<8)throw new Error("空の応答");
+  const rate=new DataView(ab).getUint32(0,true);
+  const src=new Float32Array(ab,4);            // 4は4の倍数なのでそのまま載る
+  if(!rate||!src.length)throw new Error("波形が空");
+  if(rate===ctx.sampleRate){
+    const out=ctx.createBuffer(1,src.length,ctx.sampleRate);
+    out.copyToChannel(src,0);
+    return out;
+  }
+  // レートが違えば合わせる。AudioBufferSourceNode は
+  // バッファと文脈のレート差を自分で埋めるので、それに任せる。
+  const frames=Math.max(1,Math.ceil(src.length*ctx.sampleRate/rate));
+  const off=new OfflineAudioContext(1,frames,ctx.sampleRate);
+  const inBuf=new AudioBuffer({length:src.length,sampleRate:rate,numberOfChannels:1});
+  inBuf.copyToChannel(src,0);
+  const node=off.createBufferSource();
+  node.buffer=inBuf;node.connect(off.destination);node.start();
+  return await off.startRendering();
+}
+
+// ネイティブが扱えない形式のときだけ、実体を読み出して従来の経路へ戻すために使う。
+async function desktopReadAsFile(path,name){
+  const bytes=await tauri().fs.readFile(path);
+  return new File([bytes],name||"source");
+}
+
 async function saveBlob(blob,fileName){
+  if(IS_DESKTOP){
+    // 保存先をネイティブのダイアログで選ぶ。ダウンロードフォルダ任せにしない。
+    try{
+      const ext=(fileName.match(/\.([^.]+)$/)||[])[1];
+      const path=await tauri().dialog.save({defaultPath:fileName,
+        filters:ext?[{name:ext.toUpperCase(),extensions:[ext]}]:[]});
+      if(!path)return false;                    // 取り消しは失敗ではない
+      await tauri().fs.writeFile(path,new Uint8Array(await blob.arrayBuffer()));
+      return true;
+    }catch(error){
+      console.warn("ネイティブ保存に失敗。ダウンロードへ戻します。",error);
+    }
+  }
   let file=null;
   try{file=new File([blob],fileName,{type:blob.type||"application/octet-stream"})}catch(_){file=null}
   try{
