@@ -1929,7 +1929,20 @@ function padPress(input){
 document.querySelectorAll(".switches label").forEach(label=>{
   const input=document.getElementById(label.getAttribute("for"));
   if(!input)return;
-  label.addEventListener("pointerdown",e=>{if(e.isPrimary)padPress(input)});
+  // isPrimary で絞らないこと。2本目以降の指は false になるので、
+  // スライダーやカオスパッドを掴んでいる間、パッドが死ぬ。
+  // ただし同じパッドに複数の指が乗ったときは1回だけ効かせる。
+  // A/B/Cは押すたびに反転するので、二重に効くと点けた直後に消えてしまう。
+  const held=new Set();
+  label.addEventListener("pointerdown",e=>{
+    if(held.size===0)padPress(input);
+    held.add(e.pointerId);
+  });
+  const release=e=>held.delete(e.pointerId);
+  label.addEventListener("pointerup",release);
+  label.addEventListener("pointercancel",release);
+  window.addEventListener("pointerup",release);
+  window.addEventListener("pointercancel",release);
   label.addEventListener("click",e=>e.preventDefault()); // 二重発火を断つ
   // キーボード操作(スペース)だけはクリックで拾う。ポインタ由来は detail>0。
   input.addEventListener("click",e=>{if(e.detail===0)padPress(input)});
@@ -3311,7 +3324,7 @@ let captureBuffer=null,captureData=null,capturePos=0,captureLen=0;
 let chaosReadPos=0;
 let chaosSchedulerId=null,chaosNextGrainTime=0,chaosSlicerClockId=null;
 let chaosGhosts={};
-let chaosHold=false,chaosCurrentPos={x:0,y:0},chaosDragging=false;
+let chaosHold=false,chaosCurrentPos={x:0,y:0},chaosDragging=false,chaosPointerId=null;
 let chaosZero={x:0,y:0}; // 0 LOCK: HOLD解除/手を離した時に戻る「ゼロ地点」。デフォルトは真ん中(ドライ)。
 const chaosZeroMark=document.getElementById("chaosZeroMark"),chaosZeroLockBtn=document.getElementById("chaosZeroLock");
 function chaosUpdateZeroMark(){
@@ -3629,14 +3642,16 @@ let chaosDragAnchorClient={x:0,y:0},chaosDragAnchorPos={x:0,y:0};
 const chaosSurface=document.getElementById("chaosSection");
 chaosSurface.addEventListener("pointerdown",e=>{
   if(e.target.closest("button"))return; // HOLD/0 LOCKなどのボタンはパッド操作に巻き込まない
+  if(chaosDragging)return;      // 既に別の指が操作中。起点を奪わせない
   chaosStartEngine();
   chaosDragging=true;
+  chaosPointerId=e.pointerId;
   chaosDragAnchorClient={x:e.clientX,y:chaosClientY(e)};
   chaosDragAnchorPos={...chaosCurrentPos}; // 今のドット位置を起点として記憶(ここではドットは動かさない)
   try{chaosSurface.setPointerCapture(e.pointerId)}catch(_){}
 });
 chaosSurface.addEventListener("pointermove",e=>{
-  if(!chaosDragging)return;
+  if(!chaosDragging||e.pointerId!==chaosPointerId)return;
   const r=chaosPadEl.getBoundingClientRect();
   const dx=(e.clientX-chaosDragAnchorClient.x)/(r.width/2);
   const dy=(chaosClientY(e)-chaosDragAnchorClient.y)/(r.height/2);
@@ -3646,9 +3661,9 @@ chaosSurface.addEventListener("pointermove",e=>{
   chaosCurrentPos=p;
   chaosUpdate(p.x,p.y);
 });
-window.addEventListener("pointerup",()=>{
-  if(!chaosDragging)return;
-  chaosDragging=false;
+window.addEventListener("pointerup",e=>{
+  if(!chaosDragging||e.pointerId!==chaosPointerId)return;
+  chaosDragging=false;chaosPointerId=null;
   if(!chaosHold){
     // HOLDオフ：手を離したらゼロ地点に戻る(デフォルトは中央=ドライ、0 LOCKで変更可能)
     chaosGoToZero();
