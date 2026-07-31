@@ -1,0 +1,15 @@
+{
+  "name": "robolingual-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ROBOLINGUAL の Windows 版ビルド用",
+  "scripts": {
+    "dist": "node scripts/build-dist.mjs",
+    "dev": "npm run dist && tauri dev",
+    "build": "npm run dist && tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

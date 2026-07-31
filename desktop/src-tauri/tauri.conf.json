@@ -4,9 +4,7 @@
   "version": "1.0.0",
   "identifier": "io.github.robolingual.app",
   "build": {
-    "frontendDist": "../dist",
-    "beforeBuildCommand": "node ../scripts/build-dist.mjs",
-    "beforeDevCommand": "node ../scripts/build-dist.mjs"
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [

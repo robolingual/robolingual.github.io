@@ -2,3 +2,5 @@
 target/
 # 同梱物の集約先。build-dist.mjs が毎回作り直す。
 dist/
+# npm の取得物。
+node_modules/

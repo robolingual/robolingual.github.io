@@ -1,0 +1,49 @@
+name: Windows アプリをビルド
+
+# 手で走らせる。タグを打ったときも走る。
+# 毎回の push では走らせない。マニュアルの文言直しでビルドを回しても意味がないため。
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Rust のビルドは重い。依存のコンパイル結果を残して2回目以降を短くする。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      # デコーダはこのリポジトリの presets/*.wav を実際に読んで確かめる。
+      # 殻より先に、音を取り出す部分が壊れていないことを見る。
+      - name: デコーダのテスト
+        run: cargo test --manifest-path desktop/core/Cargo.toml
+
+      - name: 依存の取得
+        working-directory: desktop
+        run: npm install
+
+      # index.html / skin.jpg / presets を dist/ に集めてから包む。
+      - name: ビルド
+        working-directory: desktop
+        run: npm run build
+
+      - name: インストーラを回収
+        uses: actions/upload-artifact@v4
+        with:
+          name: ROBOLINGUAL-windows
+          if-no-files-found: error
+          path: |
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
