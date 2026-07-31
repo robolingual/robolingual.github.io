@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ROBOLINGUAL",
+  "version": "1.0.0",
+  "identifier": "io.github.robolingual.app",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "node ../scripts/build-dist.mjs",
+    "beforeDevCommand": "node ../scripts/build-dist.mjs"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ROBOLINGUAL",
+        "width": 900,
+        "height": 1000,
+        "minWidth": 420,
+        "minHeight": 560,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi",
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "copyright": "ROBOLINGUAL",
+    "shortDescription": "ロボ語をつくる楽器",
+    "longDescription": "音源をひとつ渡すと、4人のキャラクターがそれぞれの流儀で演奏し直します。"
+  }
+}

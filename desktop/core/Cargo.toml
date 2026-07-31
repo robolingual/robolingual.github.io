@@ -1,0 +1,8 @@
+[package]
+name = "robolingual-core"
+version = "1.0.0"
+edition = "2021"
+description = "音声・動画から波形を取り出す部分。Tauriには依存しない。"
+
+[dependencies]
+symphonia = { version = "0.5", features = ["isomp4", "aac", "alac", "mp3", "wav", "flac", "pcm"] }

@@ -1,4 +1,4 @@
-# Rust のビルド成果物。数百MBになるので追跡しない。
-src-tauri/target/
-# 同梱物の集約先。build-dist が毎回作り直す。
+# Rust のビルド成果物。ワークスペース直下に出る。数百MBになるので追跡しない。
+target/
+# 同梱物の集約先。build-dist.mjs が毎回作り直す。
 dist/

@@ -1,0 +1,6 @@
+# デコーダ(core)と Tauri の殻(src-tauri)を分けてある。
+# core は Tauri に依存しないので、WebView の開発環境が無い機械でも
+# 単体で cargo test が通る。
+[workspace]
+members = ["core", "src-tauri"]
+resolver = "2"
