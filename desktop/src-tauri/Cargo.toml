@@ -1,0 +1,17 @@
+[package]
+name = "robolingual"
+version = "1.0.0"
+edition = "2021"
+description = "ROBOLINGUAL"
+default-run = "robolingual"
+
+[lib]
+name = "robolingual_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "robolingual"
+path = "src/main.rs"
+
+[dependencies]
+symphonia = { version = "0.5", features = ["isomp4", "aac", "alac", "mp3", "wav", "flac", "pcm"] }

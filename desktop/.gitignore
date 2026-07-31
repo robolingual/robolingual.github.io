@@ -1,0 +1,4 @@
+# Rust のビルド成果物。数百MBになるので追跡しない。
+src-tauri/target/
+# 同梱物の集約先。build-dist が毎回作り直す。
+dist/
