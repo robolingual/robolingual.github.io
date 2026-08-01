@@ -3449,7 +3449,7 @@ function drawMixerGrid(){
     ctx.strokeRect(zx+lw/2,zy+lw/2,zw-lw,zh-lw);
     const label=SLIP_LABEL.get(slipCurrentFraction);
     if(label){
-      const size=zh*.66;
+      const size=zh*.33; // 区画の高さの1/3。これ以上大きいと波形が読めなくなる
       ctx.font=`900 ${size}px "Arial Black",Arial,Helvetica,sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillStyle="rgba(255,255,255,.38)";
