@@ -295,9 +295,9 @@ html{scroll-behavior:smooth}
       </figure>
       <h3>動画から音声を取り出す</h3>
       <p>動画を選ぶと、波形の中のボタンが <span class="ctl">READ VIDEO</span> に変わります。これを押すと音声の取り出しが始まります。</p>
-      <p>取り出しは<strong>動画を最後まで再生しながら</strong>行うため、<strong>動画の長さぶん時間がかかります</strong>。進み具合は画面の中央に％で出ます。終わるまで画面を開いたままにしてください。</p>
+      <p><strong>動画の長さぶん時間がかかります。</strong>進み具合は画面の中央に％で出ます。終わるまで画面を開いたままにしてください。</p>
       <div class="note">
-        <p>iPhone の写真アプリから選んだ場合、ファイルが渡されるまで少し待つことがあります。<span class="ctl">WAITING...</span> と出ている間はそのままお待ちください。</p>
+        <p>iPhone の写真アプリから選ぶと <span class="ctl">WAITING...</span> が出ることがあります。そのままお待ちください。</p>
       </div>
       <figure class="empty" id="fig2">
         <img src="docs/images/01b-readvideo.png" alt="READ VIDEO">
@@ -316,7 +316,7 @@ html{scroll-behavior:smooth}
       <p><span class="ctl">TRANSLATE</span> を押すと、<strong>4キャラクター × 4バリエーション＝16パターン</strong>が生成されます。波形の下に「Ready」と表示されれば完了です。</p>
       <p>同じ音源でも、押すたびに異なる16パターンができます。</p>
       <div class="note">
-        <p><strong>生成前に BPM を決めておいてください。</strong>生成されるロボ語のテンポは、そのときの BPM を基準に決まります。</p>
+        <p><strong>生成前に BPM を決めておいてください。</strong>あとから変えても、生成済みのテンポは変わりません。</p>
       </div>
       <p><span class="ctl">↑RESTART</span> は、生成したパターンを保ったままループを頭から鳴らし直します。</p>
       <figure class="empty" id="fig4">
@@ -334,10 +334,10 @@ html{scroll-behavior:smooth}
         <table>
           <thead><tr><th>段</th><th>性格</th></tr></thead>
           <tbody>
-            <tr><td>NINJA</td><td>しなやか。伸ばしと上下のピッチベンドが主役で、終盤に向けて滑らかに解けていきます。</td></tr>
-            <tr><td>KILLER</td><td>硬く攻撃的。短く密な連打を身上とし、終盤ほど畳みかけるスタッターが増えます。</td></tr>
-            <tr><td>BANKER</td><td>生真面目。確率に頼らず、拍ごとに確実にキックを打ちます。後半は16分単位まで正確さを上げます。</td></tr>
-            <tr><td>WITCH</td><td>気まぐれ。骨格を踏まえつつ、不規則に間引きながら音を飛ばします。</td></tr>
+            <tr><td>NINJA</td><td>しなやか。伸ばしとピッチベンドが主役。</td></tr>
+            <tr><td>KILLER</td><td>硬く攻撃的。短く密な連打。</td></tr>
+            <tr><td>BANKER</td><td>生真面目。拍ごとに確実に打つ。</td></tr>
+            <tr><td>WITCH</td><td>気まぐれ。不規則に間引いて飛ばす。</td></tr>
           </tbody>
         </table>
       </div>
@@ -347,7 +347,7 @@ html{scroll-behavior:smooth}
           <thead><tr><th>列</th><th>内容</th></tr></thead>
           <tbody>
             <tr><td>A</td><td>短く、密で、乾いた発音。</td></tr>
-            <tr><td>B</td><td>長く、丸く、アタック少なめ。柔らかいエンベロープ。</td></tr>
+            <tr><td>B</td><td>長く、丸く、アタック少なめ。</td></tr>
             <tr><td>C</td><td>4スライスの固定パターンが主体。</td></tr>
             <tr><td>Ex</td><td>ワンショットの必殺技。押した瞬間に一発だけ鳴ります。</td></tr>
           </tbody>
@@ -363,7 +363,7 @@ html{scroll-behavior:smooth}
     <section id="s4">
       <div class="sec-head"><span class="sec-n">04</span><h2 class="sec-t">PAN</h2></div>
       <p>画面左の4つのノブで、キャラクターごとの左右の定位を決めます。上から NINJA / KILLER / BANKER / WITCH の順です。ノブはドラッグして回します。</p>
-      <p>ループ（A・B・C）もワンショット（Ex）も、同じキャラクターであれば同じ位置から鳴ります。4人を左右に散らすと、それぞれの動きが聴き分けやすくなります。</p>
+      <p>ループ（A・B・C）もワンショット（Ex）も、同じキャラクターなら同じ位置から鳴ります。</p>
       <figure class="empty" id="fig6">
         <img src="docs/images/04-pan.png" alt="PANノブ">
         <div class="plate">図 6 — PAN</div>
@@ -373,14 +373,14 @@ html{scroll-behavior:smooth}
 
     <section id="s5">
       <div class="sec-head"><span class="sec-n">05</span><h2 class="sec-t">BPM</h2></div>
-      <p>設定できる範囲は <span class="ctl">60</span>〜<span class="ctl">260</span> です。BPM を変えると、波形上の拍の目盛りも追随します。</p>
+      <p>設定できる範囲は <span class="ctl">60</span>〜<span class="ctl">260</span> です。</p>
       <h3>スマートフォン・タブレット</h3>
       <p><span class="ctl">BPM</span> を押すと、<strong>16パッドがそのままテンキーに変わります。</strong></p>
       <ul>
         <li>開いた直後に数字を押すと、今の値を消して打ち直しになります。</li>
         <li>今の値を直したいときは、先に <span class="ctl">⌫</span> か <span class="ctl">◀</span> を押します。</li>
         <li><span class="ctl">◀</span> <span class="ctl">▶</span> でカーソルを動かし、途中に数字を挿し込めます。</li>
-        <li><span class="ctl">ENTER</span> で確定、<span class="ctl">CANCEL</span> で取り消しです。<span class="ctl">BPM</span> をもう一度押しても取り消せます。</li>
+        <li><span class="ctl">ENTER</span> で確定、<span class="ctl">CANCEL</span> で取り消しです。</li>
       </ul>
       <h3>PC</h3>
       <p><span class="ctl">BPM</span> の欄をクリックして、そのまま打ち込めます。テンキーは出ません。</p>
@@ -395,13 +395,12 @@ html{scroll-behavior:smooth}
       <div class="sec-head"><span class="sec-n">06</span><h2 class="sec-t">テンポスライダー</h2></div>
       <p>画面右のテンポスライダーで、全体の再生速度を <span class="ctl">⅓×</span>〜<span class="ctl">3.0×</span> の範囲で変えます。上が遅く、下が速い配置です。生成時に設定した BPM が基準になります。</p>
       <ul>
-        <li><strong>つまみを狙う必要はありません。</strong>スライダーの周りのどこを触っても掴めます。触った場所へ飛ぶことはなく、そこを起点に動かした量だけ変わります。</li>
-        <li><strong>目盛りの数字は、触れた瞬間にその速度へ飛びます。</strong><span class="ctl">⅓×</span> <span class="ctl">0.5×</span> <span class="ctl">1.0×</span> <span class="ctl">2.0×</span> <span class="ctl">3.0×</span> のどれでも同じです。</li>
-        <li>ダブルクリックでも <span class="ctl">1.0×</span> に戻ります。</li>
+        <li><strong>つまみを狙う必要はありません。</strong>周りのどこを触っても掴めます。触った場所へ値が飛ぶことはありません。</li>
+        <li><strong>目盛りの数字は、触れた瞬間にその速度へ飛びます。</strong></li>
+        <li>二度押しで <span class="ctl">1.0×</span> に戻ります。</li>
       </ul>
-      <p>上部には現在の倍率と、換算後の BPM が表示されます。</p>
       <div class="note">
-        <p>操作盤は<strong>それぞれ独立しています。</strong>テンポスライダーを掴んだまま、別の指で16パッドを押したり八卦盤を動かしたりできます。</p>
+        <p>掴んだまま、別の指で16パッドや八卦盤を操作できます。</p>
       </div>
       <figure class="empty" id="fig8">
         <img src="docs/images/06-speed.png" alt="テンポスライダー">
@@ -436,7 +435,7 @@ html{scroll-behavior:smooth}
     <section id="s8">
       <div class="sec-head"><span class="sec-n">08</span><h2 class="sec-t">スリップループ</h2></div>
       <p>演奏中に<strong>波形を指で押さえる</strong>と、直前に鳴っていた音がその場で繰り返されます。いわゆるビートリピートです。</p>
-      <p>押した瞬間から遡って<strong>1拍ぶん</strong>が素材になります。<span class="ctl">1</span> を押せば、今さっき鳴っていた1拍がそのまま返ります。頭は音の立ち上がりに合わせているので、アタックがループの先頭に来ます。</p>
+      <p><span class="ctl">1</span> を押せば、<strong>今さっき鳴っていた1拍</strong>がそのまま返ります。</p>
       <h3>刻みを変える</h3>
       <p>波形は2段×3列の6区画に分かれています。押さえたまま指をずらすと刻みが変わります。</p>
       <div class="table-wrap">
@@ -448,13 +447,11 @@ html{scroll-behavior:smooth}
           </tbody>
         </table>
       </div>
-      <p>数字は<strong>1拍を何分割するか</strong>です。<span class="ctl">1</span> が1拍まるごと、<span class="ctl">1/2</span> がその半分、と細かくなっていきます。</p>
-      <p>刻みを変えても<strong>音の出頭は動きません。</strong>指を滑らせても途切れません。</p>
+      <p>数字は<strong>1拍を何分割するか</strong>です。刻みを変えても<strong>音の出頭は動きません。</strong>指を滑らせても途切れません。</p>
+      <p>押さえている場所には、今の刻みが数字で出ます。切り取られている範囲は<strong>白く光る帯</strong>で示されます。</p>
       <div class="note">
-        <p><span class="ctl">1/16</span> <span class="ctl">1/32</span> まで刻むと、繰り返しが速すぎて<strong>音程のついたブザーのように</strong>聴こえます。刻みとして使えるのは <span class="ctl">1/8</span> あたりまでで、その先は別の音色だと思ってください。</p>
+        <p><span class="ctl">1/16</span> より細かくすると、繰り返しが速すぎて<strong>音程のついたブザーのように</strong>聴こえます。刻みとして使えるのは <span class="ctl">1/8</span> あたりまでです。</p>
       </div>
-      <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。刻みが細かいほど点滅が速くなり、目で追えない速さになると、何回かに1回だけ光って見やすさを保ちます。</p>
-      <p>最も細かい <span class="ctl">1/32</span> だけは、白い芯のまわりが<strong>赤と黄に交互に発光します。</strong></p>
       <p>指を離すと元の演奏に戻ります。時間は止まっていないので、離した時点から続きます。</p>
       <figure class="empty" id="fig10">
         <img src="docs/images/08-slip.png" alt="スリップループ">
@@ -510,14 +507,13 @@ html{scroll-behavior:smooth}
 
     <section id="s11">
       <div class="sec-head"><span class="sec-n">11</span><h2 class="sec-t">MIDIコントローラー</h2></div>
-      <p>市販のMIDIパッドから、<strong>16パッドと4つのPAN</strong>を操作できます。画面右上に <span class="ctl">MIDI</span> ボタンが出ていれば使えます。出ていない環境では対応していません。</p>
+      <p>市販のMIDIパッドから、<strong>16パッドと4つのPAN</strong>を操作できます。画面右上に <span class="ctl">MIDI</span> ボタンが出ていれば使えます。</p>
       <h3>割り当てる</h3>
-      <p>機種ごとの設定表は要りません。<strong>その場で触って覚えさせる方式</strong>です。</p>
       <ol>
-        <li><span class="ctl">MIDI</span> を押すと、覚えさせる画面が出ます。</li>
-        <li>画面に「<span class="ctl">NINJA A</span>」のように出るので、それに当てたい<strong>パッドを叩きます。</strong>叩いた鍵がその場で結びついて、次へ進みます。</li>
-        <li>16パッドが終わると<strong>PAN の番</strong>です。当てたい<strong>ノブを回します。</strong></li>
-        <li>計20個で完了です。進み具合は「<span class="ctl">7 / 20</span>」のように出ます。</li>
+        <li><span class="ctl">MIDI</span> を押します。</li>
+        <li>画面に「<span class="ctl">NINJA A</span>」のように出るので、当てたい<strong>パッドを叩きます。</strong></li>
+        <li>16パッドの次は<strong>PAN</strong>です。当てたい<strong>ノブを回します。</strong></li>
+        <li>計20個で完了です。</li>
       </ol>
       <div class="table-wrap">
         <table>
@@ -528,9 +524,9 @@ html{scroll-behavior:smooth}
           </tbody>
         </table>
       </div>
-      <p>割り当ては<strong>ブラウザに保存されます。</strong>次に開いたときは覚えたままです。やり直したいときは、もう一度 <span class="ctl">MIDI</span> を押してください。前の割り当ては消えて、最初から取り直しになります。</p>
+      <p>割り当ては<strong>ブラウザに保存されます。</strong>やり直すときは、もう一度 <span class="ctl">MIDI</span> を押してください。前の割り当ては消えます。</p>
       <div class="note">
-        <p>八卦盤とスリップループはMIDIに割り当てていません。<strong>どちらも位置を面で指し続ける操作</strong>で、パッドやノブでは置き換えられないためです。この2つは画面で触ってください。</p>
+        <p>八卦盤とスリップループは割り当てていません。この2つは画面で触ってください。</p>
       </div>
       <figure class="empty" id="fig12">
         <img src="docs/images/11-midi.png" alt="MIDIの割り当て">
@@ -541,7 +537,7 @@ html{scroll-behavior:smooth}
 
     <section id="s12">
       <div class="sec-head"><span class="sec-n">12</span><h2 class="sec-t">SKIN</h2></div>
-      <p>画面右上の <span class="ctl">SKIN</span> から、<strong>背景の板を好きな画像に差し替えられます。</strong>木目、金属、写真、なんでも構いません。</p>
+      <p>画面右上の <span class="ctl">SKIN</span> から、<strong>背景の板を好きな画像に差し替えられます。</strong></p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>ボタン</th><th>動作</th></tr></thead>
@@ -552,10 +548,7 @@ html{scroll-behavior:smooth}
           </tbody>
         </table>
       </div>
-      <ul>
-        <li>選んだ画像は<strong>ブラウザに保存されます。</strong>次に開いたときもそのままです。</li>
-        <li>大きすぎる画像は自動で縮めてから保存します。元のファイルには手を付けません。</li>
-      </ul>
+      <p>選んだ画像は<strong>ブラウザに保存されます。</strong>元のファイルには手を付けません。</p>
       <figure class="empty" id="fig13">
         <img src="docs/images/12-skin.png" alt="SKIN">
         <div class="plate">図 13 — SKIN</div>
