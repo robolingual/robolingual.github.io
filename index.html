@@ -724,12 +724,12 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
     </section>
   </div>
   <div class="bay bay-side">
-    <aside class="speed-panel" aria-label="Master speed">
+    <aside class="speed-panel" aria-label="Tempo slider">
       <div id="effectiveBpm" class="effective-bpm">-- BPM</div>
       <div id="speedValue" class="speed-value">1.00×</div>
       <div class="speed-scale">
         <div class="speed-labels"><span data-rate="0.3333">⅓×</span><span data-rate="0.5">0.5×</span><span id="speedResetLabel" class="speed-reset-label" data-rate="1">1.0×</span><span data-rate="2">2.0×</span><span data-rate="3">3.0×</span></div>
-        <input id="speedSlider" class="speed-slider" type="range" min="-1000" max="1000" step="1" value="0" aria-label="Master speed, one third to 3 times">
+        <input id="speedSlider" class="speed-slider" type="range" min="-1000" max="1000" step="1" value="0" aria-label="Tempo slider, one third to 3 times">
       </div>
     </aside>
   </div>
@@ -789,7 +789,7 @@ const rendered={ninja:{a:null,b:null,c:null,d:null},killer:{a:null,b:null,c:null
 let mixerSources=[],mixerGains={},mixerRunning=false,mixerMaster=null;
 let mixerLoopDuration=0; // 8小節ループの長さ(バッファ秒)。倍率は掛けていない
 // ループ内の現在地は「バッファ上の秒」で持つ。実時間ではない。
-// MASTER SPEED を変えると聴こえるループの長さが変わるので、開始時刻からの
+// テンポスライダーを動かすと聴こえるループの長さが変わるので、開始時刻からの
 // 実時間経過をそのまま位置に使うと、倍率を変えた瞬間に現在地が飛ぶ。
 // 倍率を変える直前の位置を控えて、そこからは新しい倍率で進める。
 let mixerPhaseAnchor=0,mixerAnchorTime=0;
@@ -1709,7 +1709,7 @@ function slipBuildSample(){
   const beatSec=60/bpm;
   slipUnitSec=beatSec*SLIP_UNIT_BEATS;
   const snapLenSec=slipSnapshot.length/sr;
-  // ループ内の位置はバッファ秒、写しの読み出しは実時間。MASTER SPEEDを
+  // ループ内の位置はバッファ秒、写しの読み出しは実時間。テンポスライダーを
   // 変えるとこの2つの尺が食い違うので、拍の割り出しはバッファ秒で行い、
   // 読み出し位置に直すところで倍率で割る。
   const beatBuf=beatSec*masterRate;              // バッファ上の1拍(倍率によらない)
@@ -1731,7 +1731,7 @@ function slipBuildSample(){
   const len=Math.max(2,Math.round(slipUnitSec*sr));
   const srcData=slipSnapshot.getChannelData(0);
   // 録り貯めの外まで遡らない。ここを割ると頭が丸ごと無音になる。
-  // 遅いテンポやMASTER SPEEDを絞ったときに6秒のリングを超えて起きる。
+  // 遅いテンポやテンポスライダーを絞ったときに6秒のリングを超えて起きる。
   if(readStart<0){if(bandStart>=0)bandStart+=-readStart*masterRate;readStart=0}
   {
     const fwdSec=Math.max(0,snapLenSec-(readStart+slipUnitSec)); // 前へ動かせる余り
@@ -3393,7 +3393,7 @@ function drawMixerGrid(){
     const phase=((cycles%1)+1)%1;
     const a=1-phase; // 頭で最も明るく、1周かけて消える
     // 帯はバッファ秒の軸に描く。鳴っている長さは実時間なので倍率を掛ける。
-    // これを忘れると MASTER SPEED を絞ったとき、音は1拍なのに絵だけ2拍幅になる。
+    // これを忘れるとテンポスライダーを絞ったとき、音は1拍なのに絵だけ2拍幅になる。
     const bandBuf=slipBandDur*masterRate;
     const bandEnd=slipSampleElapsed+bandBuf;
     const endX=((bandEnd%loopDur+loopDur)%loopDur)/loopDur*width;

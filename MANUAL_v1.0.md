@@ -104,11 +104,11 @@ ROBOLINGUAL v1.0 マニュアル
 * PC では BPM の欄をクリックして直接入力できます。テンキーは出ません。
 
 
-6. MASTER SPEED
+6. テンポスライダー
 
-<!-- 画像スロット: 右側の速度スライダー
+<!-- 画像スロット: 右側のテンポスライダー
      使うときは次の行のコメントを外す
-![6. MASTER SPEED](docs/images/06-speed.png)
+![6. テンポスライダー](docs/images/06-speed.png)
 -->
 * TRANSLATE時に設定したBPMを元に、全体の再生速度を変更します。
 * 範囲は ⅓×〜3.0× です。
@@ -220,7 +220,7 @@ ROBOLINGUAL v1.0 マニュアル
 3. TRANSLATE
 4. キャラクターとバリエーションを選ぶ
 5. 必要に応じて SAVE ZIP
-6. PAN・MASTER SPEED を調整
+6. PAN・テンポスライダーを調整
 7. PLAY で確認
 8. 八卦盤とスリップループで組み替える
 9. REC → SAVE
