@@ -1556,10 +1556,11 @@ let waveSlipPointerId=null,slipActive=false,slipSource=null,slipCurrentFraction=
 let slipSnapshot=null;
 // 写しの末尾が、8小節ループの中のどの位置(秒)にあたるか。-1は不明で吸着しない。
 let slipSnapshotElapsed=-1;
-// キャプチャ経路には遅れがあり、写しの末尾は「今」より少し前を指す。
-// その差をここで補正する。プラスにすると吸着位置が前へ、マイナスで後ろへ動く。
-// 実測できない値なので、耳で合わせて調整する前提の数値。
+// 微調整の逃げ道。プラスにすると吸着位置が前へ、マイナスで後ろへ動く。
+// 遅れ本体は captureTime() が実測で埋めるので、ここは0でよい。
 const SLIP_ALIGN_OFFSET_MS=0;
+// リングの書き込み位置を避ける幅。写しの末尾はここまで。
+const CAPTURE_GUARD_SEC=.03;
 // 波形上でサンプリング箇所を光らせるための控え。
 // slipBandEnd/Dur はループ内の秒、slipLoopAnchor は今の周回が始まった時刻。
 let slipBandEnd=-1,slipBandDur=0,slipLoopAnchor=0;
@@ -1576,10 +1577,18 @@ function waveZoneFraction(clientX,clientY){
 // スリップ開始時点までに録れている音を、リングから直線バッファへ写し取る。
 // 末尾が「触った瞬間の音」になるよう新しい順に詰めるので、
 // 以降はこのバッファの末尾から欲しい長さだけ遡れば刻みが作れる。
+// 写しの末尾にあたる音の時刻。ctx.currentTime ではなく、リングに書いた枚数から出す。
+function slipSnapshotTailTime(){
+  const ctx=getAudioContext(),now=ctx.currentTime;
+  const t=captureT0+captureFrames/ctx.sampleRate-CAPTURE_GUARD_SEC;
+  // メインスレッドが詰まりすぎると onaudioprocess は呼ばれず取りこぼす。
+  // そのぶん枚数が足りなくなるので、ありえない範囲だけは押さえておく。
+  return Math.min(now,Math.max(now-captureLen/ctx.sampleRate,t));
+}
 function slipTakeSnapshot(){
   const ctx=getAudioContext();
   if(!captureData||!captureLen)return null;
-  const guard=Math.floor(.03*ctx.sampleRate); // 書き込み位置の直前は避ける
+  const guard=Math.floor(CAPTURE_GUARD_SEC*ctx.sampleRate); // 書き込み位置の直前は避ける
   const len=captureLen-guard-1;
   if(len<=2)return null;
   const buf=ctx.createBuffer(1,len,ctx.sampleRate);
@@ -1604,39 +1613,52 @@ function slipTakeSnapshot(){
 //   ・持続音の途中に当たると、鳴ってはいるが繋がった唸りになって刻みが立たない
 // 実測(PRESET 1)では、後者が4パッドでも1/16で87%あった。
 //
-// そこで直前1拍を遡り、「立ち上がり」がいちばん強い所を頭にする。
-// 大きさだけで選ぶと持続音の腹を掴んでしまうので、直前25msとの比を掛ける。
-// 持続音の途中はこの比が1前後にとどまり、音の頭だけが高くなる。
-// 拍から離れるほど少し不利にしてあるので、同じくらいなら拍の上が選ばれる。
-// 1拍以上は離さないので、拍からは外れない。
-function slipSnapHeadToAttack(src,readStart,barSec,sr){
+// そこで「立ち上がり」がいちばん強い所を頭にする。大きさだけで選ぶと持続音の腹を
+// 掴んでしまうので、直前30msとの比を掛ける。持続音の途中はこの比が1前後にとどまり、
+// 音の頭だけが高くなる。
+//
+// 探す幅は狭くする。ここを1拍ぶんにしたら、実測で中央値494ms(1拍の91%)動いた。
+// 「この拍のアタック」ではなく、ひとつ前の拍の頭を掴んでいたため。
+// そうなると「1」を押したとき、直前の4拍ではなく1拍ずれた小節が鳴る。
+// なので通常は拍の前後90ms/40msしか見ない。小節の頭はほぼ動かないままになる。
+// その範囲に音が無いときだけ、1拍まで広げて鳴っている所を拾う(無音対策)。
+function slipSnapHeadToAttack(src,readStart,barSec,sr,refRms,fwdSec){
   const aft=Math.max(1,Math.round(.012*sr)); // 立ち上がった後の12ms
   const bef=Math.max(1,Math.round(.030*sr)); // その直前の30ms
   const beat=Math.max(1,Math.round(barSec/4*sr));
   const base=Math.round(readStart*sr);
-  const from=Math.max(bef,base-beat);
-  if(base<=from)return readStart;
   const rms=(i,n)=>{
     if(i<0||i+n>src.length)return 0;
     let s=0;for(let k=0;k<n;k++)s+=src[i+k]*src[i+k];
     return Math.sqrt(s/n);
   };
-  const score=i=>{
-    const after=rms(i,aft),before=rms(i-bef,bef);
-    const rise=Math.min(4,after/Math.max(before,after*.2,1e-6));
-    return after*rise*(1-.3*((base-i)/beat)); // 拍から離れるほど少し不利
+  const hunt=(back,fwd)=>{
+    const from=Math.max(bef,base-back),to=Math.min(src.length-aft-1,base+fwd);
+    if(to<=from)return{at:base,lv:rms(base,aft)};
+    const score=i=>{
+      const after=rms(i,aft),before=rms(i-bef,bef);
+      const rise=Math.min(4,after/Math.max(before,after*.2,1e-6));
+      return after*rise*(1-.3*(Math.abs(base-i)/Math.max(1,back))); // 拍から離れるほど少し不利
+    };
+    let best=-1,at=base;
+    for(let i=from;i<=to;i+=Math.max(1,Math.round(.004*sr))){ // まず4ms刻みで当たりを付ける
+      const v=score(i);if(v>best){best=v;at=i}
+    }
+    // 当たりの周りを0.5ms刻みで詰める。ここが甘いと1/32のような短い刻みで、
+    // 頭が立ち上がりの途中に乗ってしまい、音は出ているのに刻みが立たない。
+    const fine=Math.max(1,Math.round(.0005*sr)),span=Math.max(1,Math.round(.005*sr));
+    for(let i=Math.max(from,at-span);i<=Math.min(to,at+span);i+=fine){
+      const v=score(i);if(v>best){best=v;at=i}
+    }
+    return{at,lv:rms(at,aft)};
   };
-  let best=-1,bestAt=base;
-  for(let i=from;i<=base;i+=Math.max(1,Math.round(.004*sr))){ // まず4ms刻みで当たりを付ける
-    const v=score(i);if(v>best){best=v;bestAt=i}
-  }
-  // 当たりの周りを0.5ms刻みで詰める。ここが甘いと1/32のような短い刻みで、
-  // 頭が立ち上がりの途中に乗ってしまい、音は出ているのに刻みが立たない。
-  const fine=Math.max(1,Math.round(.0005*sr)),span=Math.max(1,Math.round(.005*sr));
-  for(let i=Math.max(bef,bestAt-span);i<=Math.min(base,bestAt+span);i+=fine){
-    const v=score(i);if(v>best){best=v;bestAt=i}
-  }
-  return bestAt/sr;
+  // 前へは、写しの残りぶんまでしか動かせない。超えると素材の尻が無音で埋まる。
+  const fwd=Math.max(0,Math.min(Math.round(.04*sr),Math.round((fwdSec||0)*sr)));
+  const near=hunt(Math.round(.09*sr),fwd);
+  const wide=hunt(beat,fwd);
+  // 拍の近くに音があるならそれを使う。小節の頭は動かさない。
+  // 明らかに痩せているときだけ、遡って鳴っている所を拾う。
+  return (near.lv>=wide.lv*.5||near.lv>=refRms*.6?near.at:wide.at)/sr;
 }
 function slipBuildSample(){
   const ctx=getAudioContext(),sr=ctx.sampleRate;
@@ -1665,7 +1687,12 @@ function slipBuildSample(){
   // 遅いテンポやMASTER SPEEDを絞ったときに4拍が6秒のリングを超えて起きる。
   if(readStart<0){if(bandStart>=0)bandStart+=-readStart;readStart=0}
   {
-    const snapped=slipSnapHeadToAttack(srcData,readStart,slipBarSec,sr);
+    // 「拍に音が無い」の基準は、この4拍の中の平均。曲全体の音量に引きずられない。
+    const b0=Math.round(readStart*sr),b1=Math.min(srcData.length,b0+len);
+    let s=0;for(let i=b0;i<b1;i++)s+=srcData[i]*srcData[i];
+    const refRms=b1>b0?Math.sqrt(s/(b1-b0)):0;
+    const fwdSec=Math.max(0,snapLenSec-(readStart+slipBarSec)); // 前へ動かせる余り
+    const snapped=slipSnapHeadToAttack(srcData,readStart,slipBarSec,sr,refRms,fwdSec);
     if(snapped!==readStart){
       if(bandStart>=0){
         const loopDur=mixerLoopDuration||0;
@@ -1713,9 +1740,9 @@ function slipStart(fraction){
   if(!slipSnapshot)return;
   // 写しの末尾がループ内のどこにあたるかを控える。刻みごとの吸着量はこれから出す。
   {
-    const ac=getAudioContext(),loopDur=mixerLoopDuration||0;
+    const loopDur=mixerLoopDuration||0;
     if(loopDur>0){
-      const t=ac.currentTime-SLIP_ALIGN_OFFSET_MS/1000;
+      const t=slipSnapshotTailTime()-SLIP_ALIGN_OFFSET_MS/1000;
       slipSnapshotElapsed=((t-mixerLoopStartTime)%loopDur+loopDur)%loopDur;
     }else slipSnapshotElapsed=-1;
   }
@@ -3379,6 +3406,8 @@ const CHAOS_HELL_COLOR={water:"#2fae7a",fire:"#c94b3a",slicer:"#3aa7d9",filter:"
 
 let chaosBus=null,chaosOut=null,chaosNodes=null;
 let captureBuffer=null,captureData=null,capturePos=0,captureLen=0;
+// capturePos に対応する音の時刻を出すための控え。captureTime() を参照。
+let captureT0=0,captureFrames=0;
 let chaosReadPos=0;
 let chaosSchedulerId=null,chaosNextGrainTime=0,chaosSlicerClockId=null;
 let chaosGhosts={};
@@ -3414,9 +3443,18 @@ function getChaosBus(){
   capturePos=0;
   const captureProcessor=ctx.createScriptProcessor(2048,1,1);
   const captureSilent=ctx.createGain();captureSilent.gain.value=.00001;
+  // 書いた枚数を数えておく。capturePos が指す所の「音の時刻」を出すため。
+  // onaudioprocess はメインスレッドで動くので、描画などが詰まると呼ばれるのが
+  // 遅れ、リングは currentTime より古い所を指したままになる。実測で14〜76msぶれた。
+  // e.playbackTime は使えない。常に currentTime+46.4ms ちょうどを返すだけで、
+  // 遅れて呼ばれたことがそこに現れない。
+  // 枚数を数えるなら、いつ呼ばれようと数は合う。
+  captureT0=ctx.currentTime; // リングに最初に入る音の時刻(誤差は1レンダー量子=2.7ms未満)
+  captureFrames=0;
   captureProcessor.onaudioprocess=e=>{
     const input=e.inputBuffer.getChannelData(0);
     for(let i=0;i<input.length;i++){captureData[capturePos]=input[i];capturePos=(capturePos+1)%captureLen}
+    captureFrames+=input.length;
   };
   chaosBus.connect(captureProcessor);captureProcessor.connect(captureSilent);captureSilent.connect(ctx.destination);
 
