@@ -262,6 +262,8 @@ html{scroll-behavior:smooth}
       <li><a href="#s8"><span class="n">08</span><span>スリップループ</span></a></li>
       <li><a href="#s9"><span class="n">09</span><span>プレイヤーと保存</span></a></li>
       <li><a href="#s10"><span class="n">10</span><span>ショートカット</span></a></li>
+      <li><a href="#s11"><span class="n">11</span><span>MIDIコントローラー</span></a></li>
+      <li><a href="#s12"><span class="n">12</span><span>SKIN</span></a></li>
       <li><a href="#spec"><span class="n">A</span><span>仕様</span></a></li>
       <li><a href="#faq"><span class="n">B</span><span>困ったときは</span></a></li>
     </ol>
@@ -393,11 +395,14 @@ html{scroll-behavior:smooth}
       <div class="sec-head"><span class="sec-n">06</span><h2 class="sec-t">テンポスライダー</h2></div>
       <p>画面右の縦スライダーで、全体の再生速度を <span class="ctl">⅓×</span>〜<span class="ctl">3.0×</span> の範囲で変えます。上が遅く、下が速い配置です。生成時に設定した BPM が基準になります。</p>
       <ul>
-        <li>ドラッグすると連続的に変化します。</li>
-        <li>目盛りをタップすると、その速度へ瞬時に移動します。</li>
-        <li>ダブルクリックで <span class="ctl">1.0×</span> に戻ります。</li>
+        <li><strong>つまみを狙う必要はありません。</strong>スライダーの周りのどこを触っても掴めます。触った場所へ飛ぶことはなく、そこを起点に動かした量だけ変わります。</li>
+        <li><strong>目盛りの数字は、触れた瞬間にその速度へ飛びます。</strong><span class="ctl">⅓×</span> <span class="ctl">0.5×</span> <span class="ctl">1.0×</span> <span class="ctl">2.0×</span> <span class="ctl">3.0×</span> のどれでも同じです。</li>
+        <li>ダブルクリックでも <span class="ctl">1.0×</span> に戻ります。</li>
       </ul>
       <p>上部には現在の倍率と、換算後の BPM が表示されます。</p>
+      <div class="note">
+        <p>操作盤は<strong>それぞれ独立しています。</strong>テンポスライダーを掴んだまま、別の指で16パッドを押したり八卦盤を動かしたりできます。</p>
+      </div>
       <figure class="empty" id="fig8">
         <img src="docs/images/06-speed.png" alt="速度スライダー">
         <div class="plate">図 8 — MASTER SPEED</div>
@@ -431,7 +436,7 @@ html{scroll-behavior:smooth}
     <section id="s8">
       <div class="sec-head"><span class="sec-n">08</span><h2 class="sec-t">スリップループ</h2></div>
       <p>演奏中に<strong>波形を指で押さえる</strong>と、直前に鳴っていた音がその場で繰り返されます。いわゆるビートリピートです。</p>
-      <p>押した瞬間から遡って<strong>4拍ぶん</strong>が素材になります。頭は拍に合うので、キックなどのアタックがループの先頭に来ます。</p>
+      <p>押した瞬間から遡って<strong>1拍ぶん</strong>が素材になります。<span class="ctl">1</span> を押せば、今さっき鳴っていた1拍がそのまま返ります。頭は音の立ち上がりに合わせているので、アタックがループの先頭に来ます。</p>
       <h3>刻みを変える</h3>
       <p>波形は2段×3列の6区画に分かれています。押さえたまま指をずらすと刻みが変わります。</p>
       <div class="table-wrap">
@@ -443,8 +448,12 @@ html{scroll-behavior:smooth}
           </tbody>
         </table>
       </div>
+      <p>数字は<strong>1拍を何分割するか</strong>です。<span class="ctl">1</span> が1拍まるごと、<span class="ctl">1/2</span> がその半分、と細かくなっていきます。</p>
       <p>刻みを変えても<strong>音の出頭は動きません。</strong>指を滑らせても途切れません。</p>
-      <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。刻みが細かいほど点滅が速くなります。</p>
+      <div class="note">
+        <p><span class="ctl">1/16</span> <span class="ctl">1/32</span> まで刻むと、繰り返しが速すぎて<strong>音程のついたブザーのように</strong>聴こえます。刻みとして使えるのは <span class="ctl">1/8</span> あたりまでで、その先は別の音色だと思ってください。</p>
+      </div>
+      <p>切り取られている範囲は、波形の上に<strong>白く光る帯</strong>で示されます。刻みが細かいほど点滅が速くなり、目で追えない速さになると、何回かに1回だけ光って見やすさを保ちます。</p>
       <p>最も細かい <span class="ctl">1/32</span> だけは、白い芯のまわりが<strong>赤と黄に交互に発光します。</strong></p>
       <p>指を離すと元の演奏に戻ります。時間は止まっていないので、離した時点から続きます。</p>
       <figure class="empty" id="fig10">
@@ -499,6 +508,61 @@ html{scroll-behavior:smooth}
       </div>
     </section>
 
+    <section id="s11">
+      <div class="sec-head"><span class="sec-n">11</span><h2 class="sec-t">MIDIコントローラー</h2></div>
+      <p>市販のMIDIパッドから、<strong>16パッドと4つのPAN</strong>を操作できます。画面右上に <span class="ctl">MIDI</span> ボタンが出ていれば使えます。出ていない環境では対応していません。</p>
+      <h3>割り当てる</h3>
+      <p>機種ごとの設定表は要りません。<strong>その場で触って覚えさせる方式</strong>です。</p>
+      <ol>
+        <li><span class="ctl">MIDI</span> を押すと、覚えさせる画面が出ます。</li>
+        <li>画面に「<span class="ctl">NINJA A</span>」のように出るので、それに当てたい<strong>パッドを叩きます。</strong>叩いた鍵がその場で結びついて、次へ進みます。</li>
+        <li>16パッドが終わると<strong>PAN の番</strong>です。当てたい<strong>ノブを回します。</strong></li>
+        <li>計20個で完了です。進み具合は「<span class="ctl">7 / 20</span>」のように出ます。</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ボタン</th><th>動作</th></tr></thead>
+          <tbody>
+            <tr><td>とばす</td><td>今の1個を割り当てずに次へ。パッドが16個ない機種で使います。</td></tr>
+            <tr><td>やめる</td><td>そこまでの割り当てを残して終了します。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>割り当ては<strong>ブラウザに保存されます。</strong>次に開いたときは覚えたままです。やり直したいときは、もう一度 <span class="ctl">MIDI</span> を押してください。前の割り当ては消えて、最初から取り直しになります。</p>
+      <div class="note">
+        <p>八卦盤とスリップループはMIDIに割り当てていません。<strong>どちらも位置を面で指し続ける操作</strong>で、パッドやノブでは置き換えられないためです。この2つは画面で触ってください。</p>
+      </div>
+      <figure class="empty" id="fig12">
+        <img src="docs/images/11-midi.png" alt="MIDIの割り当て">
+        <div class="plate">図 12 — MIDI</div>
+        <figcaption><span class="fn">図 12</span><span><span class="ctl">MIDI</span> ボタンと、割り当て中の画面。</span></figcaption>
+      </figure>
+    </section>
+
+    <section id="s12">
+      <div class="sec-head"><span class="sec-n">12</span><h2 class="sec-t">SKIN</h2></div>
+      <p>画面右上の <span class="ctl">SKIN</span> から、<strong>背景の板を好きな画像に差し替えられます。</strong>木目、金属、写真、なんでも構いません。</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ボタン</th><th>動作</th></tr></thead>
+          <tbody>
+            <tr><td>画像を選ぶ</td><td>手持ちの画像に差し替えます。</td></tr>
+            <tr><td>元に戻す</td><td>最初の板に戻します。</td></tr>
+            <tr><td>やめる</td><td>何もせず閉じます。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul>
+        <li>選んだ画像は<strong>ブラウザに保存されます。</strong>次に開いたときもそのままです。</li>
+        <li>大きすぎる画像は自動で縮めてから保存します。元のファイルには手を付けません。</li>
+      </ul>
+      <figure class="empty" id="fig13">
+        <img src="docs/images/12-skin.png" alt="SKIN">
+        <div class="plate">図 13 — SKIN</div>
+        <figcaption><span class="fn">図 13</span><span>背景を差し替えた状態。</span></figcaption>
+      </figure>
+    </section>
+
     <section id="spec">
       <div class="sec-head"><span class="sec-n">A</span><h2 class="sec-t">仕様</h2></div>
       <div class="table-wrap">
@@ -509,9 +573,10 @@ html{scroll-behavior:smooth}
             <tr><td>BPM</td><td class="num">60 〜 260</td></tr>
             <tr><td>再生速度</td><td class="num">⅓× 〜 3.0×</td></tr>
             <tr><td>パッド</td><td class="num">16（4キャラクター × A・B・C・Ex）</td></tr>
-            <tr><td>スリップ刻み</td><td class="num">1 / 1/2 / 1/4 / 1/8 / 1/16 / 1/32</td></tr>
-            <tr><td>スリップ素材長</td><td class="num">4拍</td></tr>
+            <tr><td>スリップ刻み</td><td class="num">1 / 1/2 / 1/4 / 1/8 / 1/16 / 1/32（1拍を分割）</td></tr>
+            <tr><td>スリップ素材長</td><td class="num">1拍</td></tr>
             <tr><td>八卦盤</td><td class="num">4方向 ＋ 斜め4地獄ゾーン</td></tr>
+            <tr><td>MIDI</td><td class="num">16パッド ＋ PAN 4ノブ（覚えさせて割り当て）</td></tr>
             <tr><td>入力形式</td><td>WAV / MP3 / M4A / AAC / MP4 / M4V / MOV</td></tr>
             <tr><td>書き出し</td><td>16パターン ZIP ／ 演奏 WAV</td></tr>
           </tbody>
