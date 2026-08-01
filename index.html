@@ -1597,11 +1597,17 @@ const SLIP_UNIT_BEATS=1;
 // 押すたびに作り直す素材(SLIP_UNIT_BEATS拍ぶん)と、その頭がループ内のどこ(秒)か。
 let slipSample=null,slipSampleElapsed=-1,slipUnitSec=.5;
 const SLIP_ZONES=[[1,1/32,1/16],[1/2,1/4,1/8]]; // 上段/下段 × 左/中/右(手描き案の配置通り)
+// 押さえている場所を示すための控え。波形キャンバス内の割合(0〜1)で持つ。
+// 画素で持つと、拡大率や画面サイズが変わったときに合わなくなる。
+let slipTouchU=-1,slipTouchV=-1;
+const SLIP_LABEL=new Map([[1,"1"],[1/2,"1/2"],[1/4,"1/4"],[1/8,"1/8"],[1/16,"1/16"],[1/32,"1/32"]]);
 function waveZoneFraction(clientX,clientY){
   const rect=wave.getBoundingClientRect();
   if(!rect.width||!rect.height)return 1;
-  const col=Math.min(2,Math.max(0,Math.floor((clientX-rect.left)/rect.width*3)));
-  const row=Math.min(1,Math.max(0,Math.floor((clientY-rect.top)/rect.height*2)));
+  slipTouchU=Math.min(1,Math.max(0,(clientX-rect.left)/rect.width));
+  slipTouchV=Math.min(1,Math.max(0,(clientY-rect.top)/rect.height));
+  const col=Math.min(2,Math.max(0,Math.floor(slipTouchU*3)));
+  const row=Math.min(1,Math.max(0,Math.floor(slipTouchV*2)));
   return SLIP_ZONES[row][col];
 }
 // スリップ開始時点までに録れている音を、リングから直線バッファへ写し取る。
@@ -1816,6 +1822,7 @@ function slipStop(){
   if(!slipActive)return;
   slipActive=false;slipCurrentFraction=null;slipSnapshot=null;slipSnapshotElapsed=-1;
   slipBandDur=0;slipSample=null;slipSampleElapsed=-1;
+  slipTouchU=-1;slipTouchV=-1; // 指の位置の控えも消す
   const ctx=getAudioContext(),t=ctx.currentTime;
   if(slipSource){
     const{src,gain}=slipSource;slipSource=null;
@@ -3425,6 +3432,25 @@ function drawMixerGrid(){
 
   ctx.strokeStyle="#ffffff";ctx.lineWidth=Math.max(1.5,(devicePixelRatio||1)*1.5); // 現在地スキャン線
   ctx.beginPath();ctx.moveTo(scanX,0);ctx.lineTo(scanX,height);ctx.stroke();
+
+  // --- 押さえている場所に、今の刻みを重ねる ------------------------------
+  // 指の下は見えないので、印ではなく数字そのものを置く。どの区画にいるかを
+  // 目で確かめずに済む。いちばん上に描いて、帯やスキャン線に負けないようにする。
+  if(slipActive&&slipTouchU>=0){
+    const label=SLIP_LABEL.get(slipCurrentFraction);
+    if(label){
+      const size=height*.34;
+      ctx.save();
+      ctx.font=`900 ${size}px "Arial Black",Arial,Helvetica,sans-serif`;
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      const half=ctx.measureText(label).width/2+size*.1;
+      const x=Math.min(width-half,Math.max(half,slipTouchU*width));
+      const y=Math.min(height-size*.55,Math.max(size*.55,slipTouchV*height));
+      ctx.fillStyle="rgba(255,255,255,.38)";
+      ctx.fillText(label,x,y);
+      ctx.restore();
+    }
+  }
 
   mixerGridRAF=requestAnimationFrame(drawMixerGrid);
 }
