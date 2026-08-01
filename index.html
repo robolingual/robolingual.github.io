@@ -787,7 +787,26 @@ let sourceBuffer=null,audioContext=null,mono=null,attacks=[],soundLogoBuffer=nul
 const objectURLs=[];
 const rendered={ninja:{a:null,b:null,c:null,d:null},killer:{a:null,b:null,c:null,d:null},banker:{a:null,b:null,c:null,d:null},witch:{a:null,b:null,c:null,d:null}};
 let mixerSources=[],mixerGains={},mixerRunning=false,mixerMaster=null;
-let mixerLoopStartTime=0,mixerLoopDuration=0; // 波形グリッド描画(現在地スキャン線)に使う
+let mixerLoopDuration=0; // 8小節ループの長さ(バッファ秒)。倍率は掛けていない
+// ループ内の現在地は「バッファ上の秒」で持つ。実時間ではない。
+// MASTER SPEED を変えると聴こえるループの長さが変わるので、開始時刻からの
+// 実時間経過をそのまま位置に使うと、倍率を変えた瞬間に現在地が飛ぶ。
+// 倍率を変える直前の位置を控えて、そこからは新しい倍率で進める。
+let mixerPhaseAnchor=0,mixerAnchorTime=0;
+function mixerPhaseAt(t){
+  const loopDur=mixerLoopDuration||0;
+  if(loopDur<=0)return -1;
+  const v=mixerPhaseAnchor+(t-mixerAnchorTime)*masterRate;
+  return ((v%loopDur)+loopDur)%loopDur;
+}
+function mixerPhase(){return mixerPhaseAt(getAudioContext().currentTime)}
+function mixerReanchor(){
+  const loopDur=mixerLoopDuration||0;
+  if(loopDur<=0)return;
+  const t=getAudioContext().currentTime;
+  mixerPhaseAnchor=mixerPhaseAt(t);
+  mixerAnchorTime=t;
+}
 let masterRate=1;
 let renderedBpm=null; // TRANSLATE時に実際に使ったBPM(masterRateとの掛け算で実効BPMを出す)
 function updateEffectiveBpm(){
@@ -1569,8 +1588,9 @@ const SLIP_ALIGN_OFFSET_MS=0;
 // リングの書き込み位置を避ける幅。写しの末尾はここまで。
 const CAPTURE_GUARD_SEC=.03;
 // 波形上でサンプリング箇所を光らせるための控え。
-// slipBandEnd/Dur はループ内の秒、slipLoopAnchor は今の周回が始まった時刻。
-let slipBandEnd=-1,slipBandDur=0,slipLoopAnchor=0;
+// slipBandDur は今鳴っている長さ(実時間の秒)、slipLoopAnchor は今の周回が始まった時刻。
+// 帯の位置は slipSampleElapsed(バッファ秒)から描くときに出す。
+let slipBandDur=0,slipLoopAnchor=0;
 // 「1」のゾーンが鳴らす長さを拍数で。DJ機材のビートリピートと同じ数え方で1拍。
 // ここを4にすれば1小節になる。
 const SLIP_UNIT_BEATS=1;
@@ -1683,14 +1703,19 @@ function slipBuildSample(){
   const beatSec=60/bpm;
   slipUnitSec=beatSec*SLIP_UNIT_BEATS;
   const snapLenSec=slipSnapshot.length/sr;
+  // ループ内の位置はバッファ秒、写しの読み出しは実時間。MASTER SPEEDを
+  // 変えるとこの2つの尺が食い違うので、拍の割り出しはバッファ秒で行い、
+  // 読み出し位置に直すところで倍率で割る。
+  const beatBuf=beatSec*masterRate;              // バッファ上の1拍(倍率によらない)
+  const unitBuf=slipUnitSec*masterRate;
   // 写しの末尾が slipSnapshotElapsed にあたる。そこから逆算して読み出し位置を出す。
   let bandStart=-1,readStart=snapLenSec-slipUnitSec;
   if(slipSnapshotElapsed>=0){
     // 押した時点から遡って所定の拍数ぶん。終わりは直前の拍に合わせるので、
     // 出頭も拍の上に乗り、キックなどの頭がループの先頭に来る。
-    const end=Math.floor(slipSnapshotElapsed/beatSec)*beatSec;       // 直前の拍
-    const startElapsed=end-slipUnitSec;                              // そこから遡ったぶん
-    readStart=snapLenSec-(slipSnapshotElapsed-startElapsed);
+    const end=Math.floor(slipSnapshotElapsed/beatBuf)*beatBuf;       // 直前の拍
+    const startElapsed=end-unitBuf;                                  // そこから遡ったぶん
+    readStart=snapLenSec-(slipSnapshotElapsed-startElapsed)/masterRate;
     // ループの頭の近くで押すと出頭がマイナス秒(前の周回の終わり)になる。
     // 読み出しはそのままでよいが、帯の位置はループ内へ畳んでおかないと
     // 負の値になり、描画が止まってしまう。
@@ -1701,14 +1726,15 @@ function slipBuildSample(){
   const srcData=slipSnapshot.getChannelData(0);
   // 録り貯めの外まで遡らない。ここを割ると頭が丸ごと無音になる。
   // 遅いテンポやMASTER SPEEDを絞ったときに6秒のリングを超えて起きる。
-  if(readStart<0){if(bandStart>=0)bandStart+=-readStart;readStart=0}
+  if(readStart<0){if(bandStart>=0)bandStart+=-readStart*masterRate;readStart=0}
   {
     const fwdSec=Math.max(0,snapLenSec-(readStart+slipUnitSec)); // 前へ動かせる余り
     const snapped=slipSnapHeadToAttack(srcData,readStart,beatSec,sr,fwdSec);
     if(snapped!==readStart){
       if(bandStart>=0){
         const loopDur=mixerLoopDuration||0;
-        bandStart-=readStart-snapped; // 頭が前へ動いたぶん、光る帯も前へ
+        // 頭が前へ動いたぶん、光る帯も前へ。帯はバッファ秒なので倍率を掛ける
+        bandStart-=(readStart-snapped)*masterRate;
         if(loopDur>0)bandStart=((bandStart%loopDur)+loopDur)%loopDur;
       }
       readStart=snapped;
@@ -1745,7 +1771,6 @@ function slipPlayWindow(fraction){
   src.connect(gain).connect(getChaosOut());
   const t0=ctx.currentTime;
   src.start(t0,0);
-  slipBandEnd=slipSampleElapsed>=0?slipSampleElapsed+durSec:-1;
   slipBandDur=durSec;
   slipLoopAnchor=t0;
   return{src,gain};
@@ -1760,8 +1785,7 @@ function slipStart(fraction){
   {
     const loopDur=mixerLoopDuration||0;
     if(loopDur>0){
-      const t=slipSnapshotTailTime()-SLIP_ALIGN_OFFSET_MS/1000;
-      slipSnapshotElapsed=((t-mixerLoopStartTime)%loopDur+loopDur)%loopDur;
+      slipSnapshotElapsed=mixerPhaseAt(slipSnapshotTailTime()-SLIP_ALIGN_OFFSET_MS/1000);
     }else slipSnapshotElapsed=-1;
   }
   if(!slipBuildSample())return;
@@ -1787,12 +1811,11 @@ function slipRetrigger(fraction){
   // 光らせる周期の基準も、その折り返しに合わせておく。
   if(ctx.currentTime-slipLoopAnchor>=durSec)slipLoopAnchor=ctx.currentTime;
   slipBandDur=durSec;
-  slipBandEnd=slipSampleElapsed>=0?slipSampleElapsed+durSec:-1;
 }
 function slipStop(){
   if(!slipActive)return;
   slipActive=false;slipCurrentFraction=null;slipSnapshot=null;slipSnapshotElapsed=-1;
-  slipBandEnd=-1;slipBandDur=0;slipSample=null;slipSampleElapsed=-1;
+  slipBandDur=0;slipSample=null;slipSampleElapsed=-1;
   const ctx=getAudioContext(),t=ctx.currentTime;
   if(slipSource){
     const{src,gain}=slipSource;slipSource=null;
@@ -1813,8 +1836,8 @@ async function startMixer(){
   const when=ctx.currentTime+.04;
   mixerSources=[];
   mixerGains={};
-  mixerLoopStartTime=when;
   mixerLoopDuration=0;
+  mixerPhaseAnchor=0;mixerAnchorTime=when; // ここが位置の起点
   for(const mode of["ninja","killer","banker","witch"]){
     for(const variant of["a","b","c"]){
       const buffer=rendered[mode][variant];
@@ -1870,6 +1893,7 @@ function sliderToRate(value){
 }
 
 function setMasterRate(rate){
+  mixerReanchor(); // 倍率を変える前の現在地を控える。控えないとここで位置が飛ぶ
   masterRate=clamp(rate,1/3,3);
   const now=getAudioContext().currentTime;
   for(const source of mixerSources){
@@ -3310,7 +3334,7 @@ function drawMixerGrid(){
   const now=performance.now();
   const ac=getAudioContext();
   const loopDur=mixerLoopDuration||1;
-  const elapsed=((ac.currentTime-mixerLoopStartTime)%loopDur+loopDur)%loopDur;
+  const elapsed=Math.max(0,mixerPhase()); // ループ内の現在地(バッファ秒)
   const scanX=(elapsed/loopDur)*width;
 
   MIXER_MODES.forEach((mode,i)=>{
@@ -3354,15 +3378,19 @@ function drawMixerGrid(){
   // ただし「1」が1拍になったぶん、細かい刻みは点滅が速すぎて目に映らない
   // (1/32で29Hz)。速すぎるときは折り返しを2回・4回とまとめて、
   // 目に見える速さに落とす。まとめるのは2の冪なので、音とは位相が合ったまま。
-  if(slipActive&&slipBandDur>0&&slipBandEnd>=0){
+  if(slipActive&&slipBandDur>0&&slipSampleElapsed>=0){
     const finest=slipCurrentFraction<=1/32+1e-9;
     let period=slipBandDur;
     while(period<.12)period*=2; // 8Hzより速い点滅は見分けられない
     const cycles=(ac.currentTime-slipLoopAnchor)/period;
     const phase=((cycles%1)+1)%1;
     const a=1-phase; // 頭で最も明るく、1周かけて消える
-    const endX=((slipBandEnd%loopDur+loopDur)%loopDur)/loopDur*width;
-    const w=Math.max(2,(slipBandDur/loopDur)*width);
+    // 帯はバッファ秒の軸に描く。鳴っている長さは実時間なので倍率を掛ける。
+    // これを忘れると MASTER SPEED を絞ったとき、音は1拍なのに絵だけ2拍幅になる。
+    const bandBuf=slipBandDur*masterRate;
+    const bandEnd=slipSampleElapsed+bandBuf;
+    const endX=((bandEnd%loopDur+loopDur)%loopDur)/loopDur*width;
+    const w=Math.max(2,(bandBuf/loopDur)*width);
     const startX=endX-w;
     const band=fill=>{
       ctx.fillStyle=fill;
