@@ -3433,29 +3433,24 @@ function drawMixerGrid(){
   ctx.strokeStyle="#ffffff";ctx.lineWidth=Math.max(1.5,(devicePixelRatio||1)*1.5); // 現在地スキャン線
   ctx.beginPath();ctx.moveTo(scanX,0);ctx.lineTo(scanX,height);ctx.stroke();
 
-  // --- 押さえている区画を示す --------------------------------------------
-  // 指の下は見えないので、触っている6分割の1区画そのものを光らせ、
-  // そこに今の刻みを重ねる。どこを押さえているかが面で分かる。
-  // いちばん最後に描いて、帯やスキャン線の下に潜らせない。
+  // --- 押さえている場所に、今の刻みを重ねる ------------------------------
+  // 印は置かず、数字そのものを指の位置に出す。どの区画にいるかを
+  // 目で確かめずに済む。いちばん最後に描いて、帯やスキャン線の下に潜らせない。
   if(slipActive&&slipTouchU>=0){
-    const col=Math.min(2,Math.max(0,Math.floor(slipTouchU*3)));
-    const row=Math.min(1,Math.max(0,Math.floor(slipTouchV*2)));
-    const zx=col*width/3,zy=row*height/2,zw=width/3,zh=height/2;
-    ctx.save();
-    ctx.fillStyle="rgba(255,255,255,.10)";
-    ctx.fillRect(zx,zy,zw,zh);
-    const lw=Math.max(2,(devicePixelRatio||1)*2);
-    ctx.strokeStyle="rgba(255,255,255,.34)";ctx.lineWidth=lw;
-    ctx.strokeRect(zx+lw/2,zy+lw/2,zw-lw,zh-lw);
     const label=SLIP_LABEL.get(slipCurrentFraction);
     if(label){
-      const size=zh*.33; // 区画の高さの1/3。これ以上大きいと波形が読めなくなる
+      const size=height*.17; // これ以上大きいと下の波形が読めなくなる
+      ctx.save();
       ctx.font=`900 ${size}px "Arial Black",Arial,Helvetica,sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
+      // 端に寄せても文字が切れないよう、文字の幅と高さのぶんだけ内側へ寄せる
+      const half=ctx.measureText(label).width/2+size*.1;
+      const x=Math.min(width-half,Math.max(half,slipTouchU*width));
+      const y=Math.min(height-size*.55,Math.max(size*.55,slipTouchV*height));
       ctx.fillStyle="rgba(255,255,255,.38)";
-      ctx.fillText(label,zx+zw/2,zy+zh/2); // 区画の真ん中。指で隠れない
+      ctx.fillText(label,x,y);
+      ctx.restore();
     }
-    ctx.restore();
   }
 
   mixerGridRAF=requestAnimationFrame(drawMixerGrid);
