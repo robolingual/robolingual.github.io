@@ -641,6 +641,13 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
   width:18px;height:18px;border-radius:50%;border:1px solid #4d7300;
   background:#aaff00;box-shadow:0 0 8px rgba(170,255,0,.7)}
 
+/* 目盛りの数字は高さ13pxほどしかなく、指では狙えない。
+   透明な当たり判定を重ねて広げる。文字を動かすと目盛りとつまみの位置が
+   ずれてしまうので、padding ではなく重ねる形にしてある。
+   右へは伸ばさない。伸ばすとすぐ隣のスライダーの掴みを食う。 */
+.speed-labels span[data-rate]{position:relative;cursor:pointer}
+.speed-labels span[data-rate]::after{content:"";position:absolute;inset:-22px 0 -22px -20px}
+
 </style>
 </head>
 <body>
@@ -2530,9 +2537,49 @@ function jumpToRate(rate){
   updateSpeedGauge(); // 値の直接書き換えではinputが飛ばない
 }
 document.querySelectorAll(".speed-labels span[data-rate]").forEach(el=>{
-  el.style.cursor="pointer";
-  el.addEventListener("click",()=>jumpToRate(Number(el.dataset.rate)));
+  // click ではなく pointerdown。触れた瞬間に飛ばしたいので、指を離すまで待たない。
+  el.addEventListener("pointerdown",e=>{
+    e.preventDefault();  // つまみの掴み直しや文字の選択を起こさせない
+    e.stopPropagation(); // パネル側のドラッグを始めさせない
+    jumpToRate(Number(el.dataset.rate));
+  });
+  el.addEventListener("click",e=>e.preventDefault()); // タッチ後に飛んでくる分を捨てる
 });
+
+// --- パネルのどこを触ってもテンポを動かせるようにする --------------------
+// つまみは18pxしかなく、指で狙うには小さい。八卦盤と同じ考え方で、
+// パネル内のどこを触ってもその時の値を起点にして、動かした量だけ効かせる。
+// 触った位置へ飛ばさないのは、掴んだ瞬間にテンポが跳ぶのを避けるため。
+// 掴んでいる指は pointerId で見る。他の操作盤と同時に触っても取り合わない。
+(function speedPanelDrag(){
+  const panel=document.querySelector(".speed-panel");
+  if(!panel)return;
+  let id=null,startY=0,startV=0,span=1;
+  panel.addEventListener("pointerdown",e=>{
+    if(id!==null)return;                        // 既に別の指が掴んでいる
+    if(e.target===speedSlider)return;           // つまみの上は今まで通り
+    if(e.target.closest("[data-rate]"))return;  // 目盛りは上で即ジャンプ
+    id=e.pointerId;
+    startY=e.clientY;
+    startV=Number(speedSlider.value)||0;
+    span=Math.max(1,speedSlider.getBoundingClientRect().height); // 目盛りと1:1で動かす
+    try{panel.setPointerCapture(id)}catch(_){}
+    e.preventDefault();
+  });
+  panel.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id)return;
+    // 上端が⅓×なので、指を上へ動かすほど値が増える。
+    const v=Math.max(-1000,Math.min(1000,startV+(startY-e.clientY)/span*2000));
+    speedSlider.value=String(Math.round(v));
+    setMasterRate(sliderToRate(speedSlider.value));
+    updateSpeedGauge(); // 値の直接書き換えでは input が飛ばない
+  });
+  const release=e=>{if(id!==null&&e.pointerId===id)id=null};
+  panel.addEventListener("pointerup",release);
+  panel.addEventListener("pointercancel",release);
+  window.addEventListener("pointerup",release);
+  window.addEventListener("pointercancel",release);
+})();
 
 function highPassInPlace(data,start,len,sr,cutoffHz){
   // 短い一撃の低域を削り、連打時の団子状の濁りを防ぐ簡易ハイパス。
