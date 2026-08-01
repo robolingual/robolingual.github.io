@@ -1596,30 +1596,46 @@ function slipTakeSnapshot(){
 // 刻みを粗くするほど古い音へ遡っていた。
 // 取るのは直前の小節線から1小節ぶん。録り貯めが届かない範囲は無音のままにする。
 //
-// 素材の頭を実際に鳴っている所へ寄せる。
+// 素材の頭を、音の立ち上がりへ寄せる。
+//
 // 刻みを細かくすると素材の先頭しか鳴らさない(1/32なら先頭の1/32だけ)ので、
-// そこがたまたま音の切れ目だと、押しっぱなしでいつまでも無音になる。
-// 実測では1パッドだけ点けているとき、1/16以下で7割の押下が無音だった。
-// すでに鳴っているなら拍のまま動かさない。痩せているときだけ直前1拍を遡って、
-// いちばん音の立っている所へ頭を寄せる。1拍以上は離さないので拍からは外れない。
-function slipSnapHeadToAttack(src,readStart,barSec,sr,refRms){
-  const probe=Math.max(1,Math.round(.06*sr)); // 頭から60msの鳴りで判定する
-  const rmsAt=i=>{
-    if(i<0||i+probe>src.length)return 0;
-    let s=0;for(let k=0;k<probe;k++)s+=src[i+k]*src[i+k];
-    return Math.sqrt(s/probe);
-  };
+// 頭がどこに刺さるかで結果が全部決まる。拍に合わせるだけでは足りない。
+//   ・切れ目に当たると、押しっぱなしでいつまでも無音になる
+//   ・持続音の途中に当たると、鳴ってはいるが繋がった唸りになって刻みが立たない
+// 実測(PRESET 1)では、後者が4パッドでも1/16で87%あった。
+//
+// そこで直前1拍を遡り、「立ち上がり」がいちばん強い所を頭にする。
+// 大きさだけで選ぶと持続音の腹を掴んでしまうので、直前25msとの比を掛ける。
+// 持続音の途中はこの比が1前後にとどまり、音の頭だけが高くなる。
+// 拍から離れるほど少し不利にしてあるので、同じくらいなら拍の上が選ばれる。
+// 1拍以上は離さないので、拍からは外れない。
+function slipSnapHeadToAttack(src,readStart,barSec,sr){
+  const aft=Math.max(1,Math.round(.012*sr)); // 立ち上がった後の12ms
+  const bef=Math.max(1,Math.round(.030*sr)); // その直前の30ms
+  const beat=Math.max(1,Math.round(barSec/4*sr));
   const base=Math.round(readStart*sr);
-  const cur=rmsAt(base);
-  if(cur>=refRms*.35)return readStart; // すでに十分鳴っている
-  const step=Math.max(1,Math.round(.005*sr)); // 5ms刻みで探す
-  const from=Math.max(0,base-Math.round(barSec/4*sr));
-  let best=cur,bestAt=base;
-  for(let i=from;i<=base;i+=step){const v=rmsAt(i);if(v>best){best=v;bestAt=i}}
-  if(best<=cur)return readStart; // どこも鳴っていない。動かしても無駄
-  // いちばん大きい所そのものではなく、その音が立ち上がる所を頭にしたい。
-  // 最大の8割に届く最初の位置まで戻す。
-  for(let i=from;i<=bestAt;i+=step){if(rmsAt(i)>=best*.8){bestAt=i;break}}
+  const from=Math.max(bef,base-beat);
+  if(base<=from)return readStart;
+  const rms=(i,n)=>{
+    if(i<0||i+n>src.length)return 0;
+    let s=0;for(let k=0;k<n;k++)s+=src[i+k]*src[i+k];
+    return Math.sqrt(s/n);
+  };
+  const score=i=>{
+    const after=rms(i,aft),before=rms(i-bef,bef);
+    const rise=Math.min(4,after/Math.max(before,after*.2,1e-6));
+    return after*rise*(1-.3*((base-i)/beat)); // 拍から離れるほど少し不利
+  };
+  let best=-1,bestAt=base;
+  for(let i=from;i<=base;i+=Math.max(1,Math.round(.004*sr))){ // まず4ms刻みで当たりを付ける
+    const v=score(i);if(v>best){best=v;bestAt=i}
+  }
+  // 当たりの周りを0.5ms刻みで詰める。ここが甘いと1/32のような短い刻みで、
+  // 頭が立ち上がりの途中に乗ってしまい、音は出ているのに刻みが立たない。
+  const fine=Math.max(1,Math.round(.0005*sr)),span=Math.max(1,Math.round(.005*sr));
+  for(let i=Math.max(bef,bestAt-span);i<=Math.min(base,bestAt+span);i+=fine){
+    const v=score(i);if(v>best){best=v;bestAt=i}
+  }
   return bestAt/sr;
 }
 function slipBuildSample(){
@@ -1649,11 +1665,7 @@ function slipBuildSample(){
   // 遅いテンポやMASTER SPEEDを絞ったときに4拍が6秒のリングを超えて起きる。
   if(readStart<0){if(bandStart>=0)bandStart+=-readStart;readStart=0}
   {
-    // 「痩せている」の基準は、この4拍の中の平均。曲全体の音量に引きずられない。
-    let s=0,n=0;
-    for(let i=Math.round(readStart*sr);i<Math.min(srcData.length,Math.round(readStart*sr)+len);i++){s+=srcData[i]*srcData[i];n++}
-    const refRms=n?Math.sqrt(s/n):0;
-    const snapped=slipSnapHeadToAttack(srcData,readStart,slipBarSec,sr,refRms);
+    const snapped=slipSnapHeadToAttack(srcData,readStart,slipBarSec,sr);
     if(snapped!==readStart){
       if(bandStart>=0){
         const loopDur=mixerLoopDuration||0;
