@@ -276,7 +276,7 @@ html{scroll-behavior:smooth}
       <p><span class="ctl">PRESET 1</span> <span class="ctl">PRESET 2</span> <span class="ctl">PRESET 3</span> を押すと、読み込みから生成まで自動で進みます。まずはこれで。</p>
       <p>自分の音源を使うときは <span class="ctl">CHOOSE</span> でファイルを選び、<span class="ctl">TRANSLATE</span> を押します。対応形式は WAV / MP3 / M4A / AAC / MP4 / M4V / MOV。</p>
       <div class="note">
-        <p><strong>BPM は <span class="ctl">TRANSLATE</span> の前に決めてください。</strong>あとから変えても、生成済みのテンポは変わりません。</p>
+        <p><strong>BPM は <span class="ctl">TRANSLATE</span> の前に決めてください。</strong>プレイ中に変えると音程まで変わります。</p>
       </div>
       <figure class="empty" id="fig1">
         <img src="docs/images/01-source.png" alt="CHOOSE と TRANSLATE">
@@ -284,7 +284,7 @@ html{scroll-behavior:smooth}
         <figcaption><span class="fn">図 1</span><span>画面右上の <span class="ctl">CHOOSE</span> と <span class="ctl">TRANSLATE</span>、その下に BPM。</span></figcaption>
       </figure>
       <h3>動画を使うとき</h3>
-      <p>ボタンが <span class="ctl">READ VIDEO</span> に変わります。押すと取り出しが始まりますが、<strong>動画の長さぶん時間がかかります。</strong>終わるまで画面を開いたままにしてください。</p>
+      <p>画面に表示される <span class="ctl">READ VIDEO</span> を押すと動画からの音声抽出が始まりますが、<strong>動画の長さぶん時間がかかります。</strong>終わるまで画面を開いたままにしてください。</p>
       <figure class="empty" id="fig2">
         <img src="docs/images/01b-readvideo.png" alt="READ VIDEO">
         <div class="plate">図 2 — READ VIDEO</div>
@@ -294,19 +294,19 @@ html{scroll-behavior:smooth}
 
     <section id="s2">
       <div class="sec-head"><span class="sec-n">02</span><h2 class="sec-t">16パッド</h2></div>
-      <p>縦4段が<strong>キャラクター</strong>（NINJA / KILLER / BANKER / WITCH）、横4列が<strong>バリエーション</strong>（A・B・C・Ex）です。押して切り替え、点灯中をもう一度押すと消灯します。</p>
-      <p><span class="ctl">Ex</span> だけはワンショットで、押した瞬間に一発鳴ります。連打するとフィルインになります。</p>
-      <p>4段は同じタイムラインの上を走ります。どう組み替えても頭がずれません。</p>
+      <p>縦4段が<strong>キャラクター</strong>（NINJA / KILLER / BANKER / WITCH）、横4列が<strong>バリエーション</strong>（A・B・C・Ex）です。</p>
+      <p><span class="ctl">Ex</span> はワンショットの必殺フレーズです。ループしないかわりに連打できます。</p>
+      <p>4段は同じ8小節をループし続けます。</p>
       <figure class="empty" id="fig3">
         <img src="docs/images/03-pads.png" alt="16パッド">
         <div class="plate">図 3 — 16パッド</div>
-        <figcaption><span class="fn">図 3</span><span>16パッド。縦がキャラクター、横がバリエーション。</span></figcaption>
+        <figcaption><span class="fn">図 3</span><span>16パッド。カラーリングはKORGカオスミキサーから。</span></figcaption>
       </figure>
     </section>
 
     <section id="s3">
       <div class="sec-head"><span class="sec-n">03</span><h2 class="sec-t">スリップループ</h2></div>
-      <p>演奏中に<strong>波形を指で押さえる</strong>と、今さっき鳴っていた1拍がその場で繰り返されます。押さえたまま指をずらすと刻みが変わります。</p>
+      <p>演奏中に<strong>上部モニターに触れる</strong>と、触れた場所に応じた刻みで全体をループさせます。押さえたままスライドさせると刻みが変化します。</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th></th><th>左</th><th>中</th><th>右</th></tr></thead>
