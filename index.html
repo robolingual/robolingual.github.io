@@ -1564,8 +1564,11 @@ const CAPTURE_GUARD_SEC=.03;
 // 波形上でサンプリング箇所を光らせるための控え。
 // slipBandEnd/Dur はループ内の秒、slipLoopAnchor は今の周回が始まった時刻。
 let slipBandEnd=-1,slipBandDur=0,slipLoopAnchor=0;
-// 押すたびに作り直す4拍ぶんの素材と、その頭がループ内のどこ(秒)か。
-let slipSample=null,slipSampleElapsed=-1,slipBarSec=2;
+// 「1」のゾーンが鳴らす長さを拍数で。DJ機材のビートリピートと同じ数え方で1拍。
+// ここを4にすれば1小節になる。
+const SLIP_UNIT_BEATS=1;
+// 押すたびに作り直す素材(SLIP_UNIT_BEATS拍ぶん)と、その頭がループ内のどこ(秒)か。
+let slipSample=null,slipSampleElapsed=-1,slipUnitSec=.5;
 const SLIP_ZONES=[[1,1/32,1/16],[1/2,1/4,1/8]]; // 上段/下段 × 左/中/右(手描き案の配置通り)
 function waveZoneFraction(clientX,clientY){
   const rect=wave.getBoundingClientRect();
@@ -1599,11 +1602,11 @@ function slipTakeSnapshot(){
   }
   return buf;
 }
-// 押した位置から4拍(1小節)ぶんを切り出し、これを固定の素材にする。
+// 押した位置から SLIP_UNIT_BEATS 拍ぶんを切り出し、これを固定の素材にする。
 // 刻みは「この素材の頭から何ぶん鳴らすか」を決めるだけなので、刻みを変えても
 // 音の出頭が動かない。以前は終端を区切りに合わせて後ろへ伸ばしていたため、
 // 刻みを粗くするほど古い音へ遡っていた。
-// 取るのは直前の小節線から1小節ぶん。録り貯めが届かない範囲は無音のままにする。
+// 取るのは直前の拍からその手前ぶん。録り貯めが届かない範囲は無音のままにする。
 //
 // 素材の頭を、音の立ち上がりへ寄せる。
 //
@@ -1619,13 +1622,13 @@ function slipTakeSnapshot(){
 //
 // 探す幅は狭くする。ここを1拍ぶんにしたら、実測で中央値494ms(1拍の91%)動いた。
 // 「この拍のアタック」ではなく、ひとつ前の拍の頭を掴んでいたため。
-// そうなると「1」を押したとき、直前の4拍ではなく1拍ずれた小節が鳴る。
-// なので通常は拍の前後90ms/40msしか見ない。小節の頭はほぼ動かないままになる。
+// そうなると「1」を押したとき、直前の音ではなく1拍ずれた所が鳴る。
+// なので通常は拍の前後90ms/40msしか見ない。頭はほぼ動かないままになる。
 // その範囲に音が無いときだけ、1拍まで広げて鳴っている所を拾う(無音対策)。
-function slipSnapHeadToAttack(src,readStart,barSec,sr,refRms,fwdSec){
+function slipSnapHeadToAttack(src,readStart,beatSec,sr,fwdSec){
   const aft=Math.max(1,Math.round(.012*sr)); // 立ち上がった後の12ms
   const bef=Math.max(1,Math.round(.030*sr)); // その直前の30ms
-  const beat=Math.max(1,Math.round(barSec/4*sr));
+  const beat=Math.max(1,Math.round(beatSec*sr));
   const base=Math.round(readStart*sr);
   const rms=(i,n)=>{
     if(i<0||i+n>src.length)return 0;
@@ -1654,26 +1657,32 @@ function slipSnapHeadToAttack(src,readStart,barSec,sr,refRms,fwdSec){
   };
   // 前へは、写しの残りぶんまでしか動かせない。超えると素材の尻が無音で埋まる。
   const fwd=Math.max(0,Math.min(Math.round(.04*sr),Math.round((fwdSec||0)*sr)));
-  const near=hunt(Math.round(.09*sr),fwd);
-  const wide=hunt(beat,fwd);
-  // 拍の近くに音があるならそれを使う。小節の頭は動かさない。
-  // 明らかに痩せているときだけ、遡って鳴っている所を拾う。
-  return (near.lv>=wide.lv*.5||near.lv>=refRms*.6?near.at:wide.at)/sr;
+  const near=hunt(Math.round(beatSec/4*sr),fwd);
+  // 拍まるごと無音のことがある。パッドを1枚しか点けていないと、生成器が
+  // 各拍を55%の確率でしか置かないので、まとまった空きができる。
+  // その拍だけ見ていても拾えないので、遡る側は4拍ぶん見る。
+  const wide=hunt(beat*4,fwd);
+  // 判定は相対だけにする。絶対値の下限を or で足すと、そこを超えただけの
+  // か細い音でも「用は足りた」ことになり、すぐ隣にある本命を逃す。
+  // 比の閾値は緩めに取る。ここを1/2にすると、音がちゃんとある拍でも
+  // 「4拍のうちにもっと大きい所がある」だけで飛んでしまい、実測で
+  // 4パッドでも半数が拍から離れた。1/5なら、拍がほぼ死んでいるときだけ動く。
+  return (near.lv>=wide.lv*.2?near.at:wide.at)/sr;
 }
 function slipBuildSample(){
   const ctx=getAudioContext(),sr=ctx.sampleRate;
   if(!slipSnapshot)return false;
   const bpm=Math.max(1,(renderedBpm||Number(bpmInput.value)||120)*masterRate);
-  slipBarSec=60/bpm*4;
+  const beatSec=60/bpm;
+  slipUnitSec=beatSec*SLIP_UNIT_BEATS;
   const snapLenSec=slipSnapshot.length/sr;
   // 写しの末尾が slipSnapshotElapsed にあたる。そこから逆算して読み出し位置を出す。
-  let bandStart=-1,readStart=snapLenSec-slipBarSec;
+  let bandStart=-1,readStart=snapLenSec-slipUnitSec;
   if(slipSnapshotElapsed>=0){
-    // 押した時点から遡って4拍ぶん。終わりは直前の拍に合わせるので、
+    // 押した時点から遡って所定の拍数ぶん。終わりは直前の拍に合わせるので、
     // 出頭も拍の上に乗り、キックなどの頭がループの先頭に来る。
-    const beatSec=slipBarSec/4;
     const end=Math.floor(slipSnapshotElapsed/beatSec)*beatSec;       // 直前の拍
-    const startElapsed=end-slipBarSec;                               // そこから過去4拍
+    const startElapsed=end-slipUnitSec;                              // そこから遡ったぶん
     readStart=snapLenSec-(slipSnapshotElapsed-startElapsed);
     // ループの頭の近くで押すと出頭がマイナス秒(前の周回の終わり)になる。
     // 読み出しはそのままでよいが、帯の位置はループ内へ畳んでおかないと
@@ -1681,18 +1690,14 @@ function slipBuildSample(){
     const loopDur=mixerLoopDuration||0;
     bandStart=loopDur>0?((startElapsed%loopDur)+loopDur)%loopDur:startElapsed;
   }
-  const len=Math.max(2,Math.round(slipBarSec*sr));
+  const len=Math.max(2,Math.round(slipUnitSec*sr));
   const srcData=slipSnapshot.getChannelData(0);
   // 録り貯めの外まで遡らない。ここを割ると頭が丸ごと無音になる。
-  // 遅いテンポやMASTER SPEEDを絞ったときに4拍が6秒のリングを超えて起きる。
+  // 遅いテンポやMASTER SPEEDを絞ったときに6秒のリングを超えて起きる。
   if(readStart<0){if(bandStart>=0)bandStart+=-readStart;readStart=0}
   {
-    // 「拍に音が無い」の基準は、この4拍の中の平均。曲全体の音量に引きずられない。
-    const b0=Math.round(readStart*sr),b1=Math.min(srcData.length,b0+len);
-    let s=0;for(let i=b0;i<b1;i++)s+=srcData[i]*srcData[i];
-    const refRms=b1>b0?Math.sqrt(s/(b1-b0)):0;
-    const fwdSec=Math.max(0,snapLenSec-(readStart+slipBarSec)); // 前へ動かせる余り
-    const snapped=slipSnapHeadToAttack(srcData,readStart,slipBarSec,sr,refRms,fwdSec);
+    const fwdSec=Math.max(0,snapLenSec-(readStart+slipUnitSec)); // 前へ動かせる余り
+    const snapped=slipSnapHeadToAttack(srcData,readStart,beatSec,sr,fwdSec);
     if(snapped!==readStart){
       if(bandStart>=0){
         const loopDur=mixerLoopDuration||0;
@@ -1713,11 +1718,17 @@ function slipBuildSample(){
   slipSampleElapsed=bandStart;
   return true;
 }
+// 刻みが鳴らす長さ。1が1拍なので、1/32は1拍の1/32(110BPMで17ms=59Hz)まで縮む。
+// 下限はこれ以上短いとループというより直流に近くなる所に置いてある。
+const SLIP_MIN_LOOP_SEC=.008;
+function slipLoopSec(fraction){
+  return Math.max(SLIP_MIN_LOOP_SEC,Math.min(slipUnitSec,slipUnitSec*fraction));
+}
 function slipPlayWindow(fraction){
   const ctx=getAudioContext();
   if(!slipSample)return null;
   // 常に素材の頭から鳴らす。刻みは終わりの位置だけを決める。
-  const durSec=Math.max(.015,Math.min(slipBarSec,slipBarSec*fraction));
+  const durSec=slipLoopSec(fraction);
   const src=ctx.createBufferSource();
   src.buffer=slipSample;
   src.loop=true;
@@ -1759,7 +1770,7 @@ function slipRetrigger(fraction){
   if(!slipActive||fraction===slipCurrentFraction||!slipSource)return;
   slipCurrentFraction=fraction;
   const ctx=getAudioContext();
-  const durSec=Math.max(.015,Math.min(slipBarSec,slipBarSec*fraction));
+  const durSec=slipLoopSec(fraction);
   // 音源は作り直さず、ループの終わりだけ動かす。
   // 作り直すと刻みを変えるたびに頭から鳴り直すので、細かく動かしたときに
   // いちいち引っかかって聞こえていた。終わりを動かすだけなら次の折り返しから
@@ -3266,11 +3277,13 @@ function drawMixerGrid(){
   // --- スリップ中：サンプリングした箇所を刻みに同期して光らせる -----------
   // ループ1周ぶんかけて真っ白から透明へ落ちる。刻みが細かいほど周期が短く
   // なるので、自然と点滅に見える。
-  // ただし最小の1/32は落ちきる前に次が来て点きっぱなしに見えるため、
-  // そこだけ1/16の速さにする。
+  // ただし「1」が1拍になったぶん、細かい刻みは点滅が速すぎて目に映らない
+  // (1/32で29Hz)。速すぎるときは折り返しを2回・4回とまとめて、
+  // 目に見える速さに落とす。まとめるのは2の冪なので、音とは位相が合ったまま。
   if(slipActive&&slipBandDur>0&&slipBandEnd>=0){
     const finest=slipCurrentFraction<=1/32+1e-9;
-    const period=finest?slipBandDur*2:slipBandDur;
+    let period=slipBandDur;
+    while(period<.12)period*=2; // 8Hzより速い点滅は見分けられない
     const cycles=(ac.currentTime-slipLoopAnchor)/period;
     const phase=((cycles%1)+1)%1;
     const a=1-phase; // 頭で最も明るく、1周かけて消える
