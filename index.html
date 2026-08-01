@@ -2410,6 +2410,11 @@ document.addEventListener("selectionchange",()=>{
   const KEEP="input,textarea,select,button,a";
   root.addEventListener("touchstart",e=>{
     const t=e.target;
+    // テンポスライダーだけは例外の例外。input なので上の KEEP に当たってしまい、
+    // つまみの上だけ長押しが素通りして虫めがねが出ていた。
+    // 操作はパネル側のドラッグが受け持っているので、既定動作は要らない。
+    // PANのつまみは受け皿が無いので、こちらは既定動作のまま残す。
+    if(t===speedSlider){e.preventDefault();return}
     if(t instanceof Element&&t.closest(KEEP))return;
     e.preventDefault();
   },{passive:false});
@@ -2554,27 +2559,49 @@ document.querySelectorAll(".speed-labels span[data-rate]").forEach(el=>{
 (function speedPanelDrag(){
   const panel=document.querySelector(".speed-panel");
   if(!panel)return;
-  let id=null,startY=0,startV=0,span=1;
+  let id=null,startY=0,startV=0,span=1,movedPx=0;
+  // 二度押しで1.0×に戻す。dblclick は使えない。下で pointerdown の既定を
+  // 止めており、マウス互換イベントが飛ばなくなるため。ここで自分で数える。
+  let lastTapAt=0,lastTapY=0;
   panel.addEventListener("pointerdown",e=>{
     if(id!==null)return;                        // 既に別の指が掴んでいる
-    if(e.target===speedSlider)return;           // つまみの上は今まで通り
     if(e.target.closest("[data-rate]"))return;  // 目盛りは上で即ジャンプ
+    const now=performance.now();
+    if(now-lastTapAt<400&&Math.abs(e.clientY-lastTapY)<14){
+      lastTapAt=0;
+      resetMasterRate();
+      e.preventDefault();
+      return;                                   // 戻したのでドラッグは始めない
+    }
+    // つまみの上も同じ扱いにする。ここだけ native に任せると、
+    // 長押しの虫めがねを止められない(input は既定動作を残す側に入るため)。
+    // 掴んだ所が起点になるので、つまみを掴んだときの感触は native と変わらない。
+    if(e.target===speedSlider){try{speedSlider.focus({preventScroll:true})}catch(_){}}
     id=e.pointerId;
     startY=e.clientY;
     startV=Number(speedSlider.value)||0;
+    movedPx=0;
     span=Math.max(1,speedSlider.getBoundingClientRect().height); // 目盛りと1:1で動かす
     try{panel.setPointerCapture(id)}catch(_){}
     e.preventDefault();
   });
   panel.addEventListener("pointermove",e=>{
     if(id===null||e.pointerId!==id)return;
+    movedPx=Math.max(movedPx,Math.abs(e.clientY-startY));
     // 上端が⅓×なので、指を上へ動かすほど値が増える。
     const v=Math.max(-1000,Math.min(1000,startV+(startY-e.clientY)/span*2000));
     speedSlider.value=String(Math.round(v));
     setMasterRate(sliderToRate(speedSlider.value));
     updateSpeedGauge(); // 値の直接書き換えでは input が飛ばない
   });
-  const release=e=>{if(id!==null&&e.pointerId===id)id=null};
+  const release=e=>{
+    if(id===null||e.pointerId!==id)return;
+    id=null;
+    // 動かさずに離したときだけ「1回目の押し」として数える。
+    // ドラッグの直後を二度押しと取り違えると、狙った値が消えてしまう。
+    if(movedPx<5){lastTapAt=performance.now();lastTapY=startY}
+    else lastTapAt=0;
+  };
   panel.addEventListener("pointerup",release);
   panel.addEventListener("pointercancel",release);
   window.addEventListener("pointerup",release);
