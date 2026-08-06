@@ -2990,27 +2990,50 @@ function renderKillerAccelPattern(out,src,base,beat,slices,sr,rng,hard){
 // 「次が来る」予感になる(位置がバラバラだとただの穴で終わる)。
 // 「休ツタン、つたたた」を4小節でAABA的に変化させる:
 //   roll(1,2回目・地の詰め) → land(3回目・少し短く着地) → release(4回目・連打の壁で解放)
+// 尺は小節(4拍)全体に対する比率で取る。以前は1拍ぶんの比率のまま1小節に1回しか
+// 呼んでいなかったため、小節の頭0.9拍だけで終わり残り3拍が意図せず無音になっていた。
 function renderKillerFlowBar(out,src,base,beat,slices,sr,rng,hard,variant){
- const pickup=Math.floor(beat*.16); // 小節頭の休み＝助走
- const dest0=base+pickup,gap=Math.floor(beat*.09);
+ const bar=beat*4;
+ const pickup=Math.floor(bar*.04); // 小節頭の休み＝助走(固定位置)
+ const dest0=base+pickup,gap=Math.floor(bar*.022);
  const sl1=pickPercussiveSlice(slices,rng);
- renderOneShot(out,src,dest0,sl1.start,Math.min(sl1.length,Math.floor(beat*.10)),(hard?.86:.62)+rng()*.08); // ツ
- renderOneShot(out,src,dest0+gap,sl1.start,Math.min(sl1.length,Math.floor(beat*.10)),(hard?.8:.58)+rng()*.08); // タン
- const tailStart=dest0+gap*2;
+ renderOneShot(out,src,dest0,sl1.start,Math.min(sl1.length,Math.floor(bar*.025)),(hard?.86:.62)+rng()*.08); // ツ
+ renderOneShot(out,src,dest0+gap,sl1.start,Math.min(sl1.length,Math.floor(bar*.025)),(hard?.8:.58)+rng()*.08); // タン
+ const tailStart=dest0+gap*2,tailSpan=Math.max(0,bar-(tailStart-base)-Math.floor(bar*.05)); // 末尾に少し余白
  if(variant==="release"){
-   const n=6; // 4回目：解放。連打の壁で一気に弾ける
+   const n=10; // 4回目：解放。連打の壁で一気に弾ける
    for(let i=0;i<n;i++){
-     const d=tailStart+Math.floor(i*beat*.55/n),sl=pickPercussiveSlice(slices,rng);
-     renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,Math.floor(beat*.06))),.9+rng()*.08);
+     const d=tailStart+Math.floor(i*tailSpan/n),sl=pickPercussiveSlice(slices,rng);
+     renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,Math.floor(bar*.018))),.9+rng()*.08);
    }
  }else{
-   const n=variant==="land"?3:4; // 3回目(land)は最後の一撃を長めにして着地感を出す
+   const n=variant==="land"?4:6; // land(3回目)は最後の一撃を長めにして着地感を出す
    for(let i=0;i<n;i++){
-     const d=tailStart+Math.floor(i*(beat*.55)/n),sl=pickPercussiveSlice(slices,rng);
-     const len=variant==="land"&&i===n-1?Math.floor(beat*.16):Math.floor(beat*.07);
+     const d=tailStart+Math.floor(i*tailSpan/n),sl=pickPercussiveSlice(slices,rng);
+     const len=variant==="land"&&i===n-1?Math.floor(bar*.05):Math.floor(bar*.02);
      renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,len)),.82+rng()*.1);
    }
  }
+}
+// KILLER固有(hard=A)：基本は1/8・1/16の刻みにとどめる。1/16と1/32を常用で
+// 混ぜるとBANKERの正確な刻みの領域に近づいてしまう。そこへ1小節に1回だけ、
+// 「1拍まるごと保持(緩)」「1/32の連打(急)」「固定位置の休符」のどれかを混ぜて
+// メリハリを作る。休符は狙いが難しいので、まずは4拍目後半という固定位置だけを使う。
+const KILLER_CHOP_CELLS=[[0,.5],[0,.25,.5,.75],[0,.25,.5],[0,.5,.75]]; // 1/8・1/16のみ、1/32は含めない
+function renderKillerChopBeat(out,src,dest,beatLen,slices,sr,rng,progress){
+  const sl=pick(slices,rng),cells=pick(KILLER_CHOP_CELLS,rng);
+  for(let i=0;i<cells.length;i++){
+    const d=dest+Math.floor(cells[i]*beatLen),len=Math.max(Math.floor(sr*.028),Math.min(sl.length,Math.floor(beatLen*(.07+rng()*.08))));
+    renderOneShot(out,src,d,sl.start,len,.82+rng()*.12+progress*.05);
+  }
+}
+function renderKillerBurstBeat(out,src,dest,beat,slices,sr,rng){
+  // 1/32連打。常用ではなく、狙って使う特別な瞬間。
+  const n=8;
+  for(let i=0;i<n;i++){
+    const d=dest+Math.floor(i*beat/n),sl=pickPercussiveSlice(slices,rng);
+    renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,Math.floor(beat*.045))),.85+rng()*.1);
+  }
 }
 function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
@@ -3041,13 +3064,22 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
      continue;
    }
    if(hard){
-     // A: short, dense, dry, attacking bursts. No long flowing material.
+     // A: 基本は1/8・1/16の刻み。小節ごとに緩急の型を1つだけ選ぶ(混ぜない)。
+     // chop(刻みのみ)が最も多く、hold/burst/restは「たまに」の扱いにとどめる。
+     const roll=rng();
+     const mode=roll<.15?"hold":roll<.30?"burst":roll<.45?"rest":"chop";
+     const specialBeat=mode==="hold"?Math.floor(rng()*4):3; // 保持は拍を選ぶ。連打/休符は4拍目に固定
      for(let q=0;q<4;q++){
-       const sl=pick(slices,rng),dest=base+Math.floor(q*beat);
-       const cells=pick([[0,.25,.5,.75],[0,.125,.25,.5,.625,.75,.875],[0,.25,.375,.5,.75,.875]],rng);
-       for(let i=0;i<cells.length;i++){
-         const d=dest+Math.floor(cells[i]*beat),len=Math.max(Math.floor(sr*.028),Math.min(sl.length,Math.floor(beat*(.07+rng()*.08))));
-         renderOneShot(out,src,d,sl.start,len,.82+rng()*.12+progress*.05);
+       const dest=base+Math.floor(q*beat);
+       if(mode==="hold"&&q===specialBeat){
+         const sl=pickWeightedSlice(slices,rng,true);
+         renderNatural(out,src,dest,sl,Math.floor(beat*.92),.7+rng()*.1,rng); // 1拍まるごと保持("緩")
+       }else if(mode==="burst"&&q===3){
+         renderKillerBurstBeat(out,src,dest,beat,slices,sr,rng); // 4拍目固定で1/32連打("急")
+       }else if(mode==="rest"&&q===3){
+         renderKillerChopBeat(out,src,dest,beat*.5,slices,sr,rng,progress); // 前半だけ刻み、後半(固定位置)は休符
+       }else{
+         renderKillerChopBeat(out,src,dest,beat,slices,sr,rng,progress);
        }
      }
      highPassInPlace(out,base,barEnd-base,sr,140); // 密な連打の低域を軽く削り、団子状の濁りを防ぐ
