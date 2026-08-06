@@ -809,6 +809,9 @@ function mixerReanchor(){
 }
 let masterRate=1;
 let renderedBpm=null; // TRANSLATE時に実際に使ったBPM(masterRateとの掛け算で実効BPMを出す)
+// TRANSLATE毎に検出するキー/音階。{root,name,intervals,confidence} か、検出できなければ null。
+// ユーザーは一切関与しない完全自動。狙ったキーが要る人は元音源を差し替える前提(BPMと同じ扱い)。
+let detectedScale=null;
 function updateEffectiveBpm(){
   const el=document.getElementById("effectiveBpm");
   if(!el)return;
@@ -1261,7 +1264,16 @@ async function runTranslate(){
     const totalD=Math.floor(sr*(60/bpm)*4); // Dは常に固定1小節(4拍)ちょうど。4/8小節トグルや旧来の「4小節の箱」とは無関係の独立した一撃必殺技。
     await loadSoundLogo();
     renderedSoundLogo=buildSoundLogoTrack(total,sr,bpm,bars);
-    const variantPools=splitVariantSlices(makeSlices(mono,sr,attacks),mono,sr);
+    const sourceSlices=makeSlices(mono,sr,attacks);
+    const variantPools=splitVariantSlices(sourceSlices,mono,sr);
+    // キー推定とスライスへのピッチタグ付け。ここで完結し、他の処理には影響しない。
+    // splitVariantSlicesはスライスを複製せず同じオブジェクトを配るので、
+    // ここで付けたタグはa/b/c/d全グループとEx(D)の生成側からも見える。
+    pitchAnalysisSr=sr;
+    const pitchTrack=detectF0Track(decimateForPitch(mono,sr,8000),8000);
+    detectedScale=estimateScale(pitchTrack);
+    for(const sl of sourceSlices)tagSliceWithPitch(sl,pitchTrack,detectedScale);
+    updateExInterval(detectedScale);
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
       ["ninja","b","Ninja",1,makeNinjaB,variantPools.b],
@@ -1947,8 +1959,17 @@ const activeDVoices={};
 const lastExTrigger={ninja:-Infinity,killer:-Infinity,banker:-Infinity,witch:-Infinity}; // 波形グリッドのフラッシュ表示用
 // Exの鳴り方。他の音に埋もれないよう、音量と音程をここで調整する。
 const EX_GAIN=1.3;                            // 1.0が元の音量
-const EX_SEMITONES=4;                         // 音階を半音いくつ上げるか(4=2音)
-const EX_PITCH_RATE=Math.pow(2,EX_SEMITONES/12);
+let EX_SEMITONES=4;                           // 音階を半音いくつ上げるか(既定は4=2音)
+let EX_PITCH_RATE=Math.pow(2,EX_SEMITONES/12);
+// TRANSLATE毎に、検出したキーの中で3度に一番近い跳躍を選び直す。無ければ5度に近いもの、
+// それも無ければ既定の4半音(2音)のまま。固定の一律ルールより、素材ごとに効く跳躍になる。
+function updateExInterval(scale){
+  if(!scale){EX_SEMITONES=4;EX_PITCH_RATE=Math.pow(2,EX_SEMITONES/12);return}
+  const near=target=>scale.intervals.reduce((best,iv)=>Math.abs(iv-target)<Math.abs(best-target)?iv:best,scale.intervals[0]);
+  const third=near(4);
+  EX_SEMITONES=Math.abs(third-4)<=2?third:near(7);
+  EX_PITCH_RATE=Math.pow(2,EX_SEMITONES/12);
+}
 function triggerOneShotD(mode){
   // Dは4系統ループの仕組みから完全に独立：押した瞬間に単発で再生する（他の再生状況とは無関係）。
   // Dのバッファは常に「中身ぴったり1小節(4拍)」の長さで生成されているので、
@@ -2731,6 +2752,140 @@ function splitVariantSlices(slices,src,sr){
   const d=ensure(groupD,c);
   return {a,b,c,d};
 }
+// =====================================================================
+// キー/音階の自動検出とスライスへのピッチタグ付け
+// -----------------------------------------------------------------------
+// 「無秩序なマシンガン」をやめて「聞こえる連打」に変えるための下地。
+// ユーザーには一切見せない完全自動の解析で、TRANSLATE1回につき1度だけ走る。
+// 喋り声は全スライスにピッチがあるとは限らない(子音・破裂音は基本周波数を
+// 持たない)。無理に音程を割り当てず、検出できたものだけタグを付ける。
+// =====================================================================
+
+// 12平均律に近似した音階の型。主音からの半音距離(昇順)。
+// 中華五声(宮商角徴羽)は五音音階の主音違いとして自然に出るので、別テンプレートは持たない。
+const SCALE_TEMPLATES=[
+  {name:"major",intervals:[0,2,4,5,7,9,11]},
+  {name:"minor",intervals:[0,2,3,5,7,8,10]},
+  {name:"majorPentatonic",intervals:[0,2,4,7,9]},
+  {name:"minorPentatonic",intervals:[0,3,5,7,10]},
+  {name:"miyakobushi",intervals:[0,1,5,7,8]},   // 都節
+  {name:"ritsu",intervals:[0,2,5,7,9]},          // 律
+  {name:"ryukyu",intervals:[0,4,5,7,11]},        // 琉球
+  {name:"bhairav",intervals:[0,1,4,5,7,8,11]},   // インド:タート(12平均律近似、微分音は再現しない)
+  {name:"kafi",intervals:[0,2,3,5,7,9,10]},      // インド:タート(同上)
+];
+
+// ピッチ解析用に軽く間引く。人の声のF0は500Hzまでしか見ないので、8kHzで十分。
+// 元のサンプルレートのまま自己相関を回すと重すぎるための実用上の措置。
+// 箱形平均が簡易ローパスを兼ねる(解析専用。実際に鳴る音には手を付けない)。
+function decimateForPitch(mono,srIn,srOut){
+  const ratio=srIn/srOut,n=Math.max(1,Math.floor(mono.length/ratio));
+  const out=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const start=Math.floor(i*ratio),end=Math.max(start+1,Math.floor((i+1)*ratio));
+    let s=0,c=0;for(let j=start;j<end&&j<mono.length;j++){s+=mono[j];c++}
+    out[i]=c?s/c:0;
+  }
+  return out;
+}
+// 窓ごとの基本周波数(F0)を自己相関で推定する。無音・無声(子音的な音)は hz=0 で返す。
+// voiced は自己相関のピークの強さ(0〜1)で、ピッチの確信度として使う。
+function detectF0Track(monoDecim,srDecim){
+  const win=Math.max(64,Math.floor(srDecim*.04)),hop=Math.max(32,Math.floor(srDecim*.02));
+  const minHz=70,maxHz=500,minLag=Math.max(1,Math.floor(srDecim/maxHz)),maxLag=Math.floor(srDecim/minHz);
+  const track=[];
+  for(let start=0;start+win<=monoDecim.length;start+=hop){
+    let energy=0;for(let i=0;i<win;i++){const v=monoDecim[start+i];energy+=v*v}
+    const rms=Math.sqrt(energy/win),tSec=start/srDecim;
+    if(rms<.004){track.push({tSec,hz:0,voiced:0,rms});continue}
+    let bestLag=-1,bestVal=-1;
+    for(let lag=minLag;lag<=maxLag&&start+win+lag<=monoDecim.length+lag;lag++){
+      let sum=0;for(let i=0;i<win-lag;i++)sum+=monoDecim[start+i]*monoDecim[start+i+lag];
+      if(sum>bestVal){bestVal=sum;bestLag=lag}
+    }
+    const voiced=bestLag>0?Math.max(0,Math.min(1,bestVal/(energy+1e-9))):0;
+    track.push({tSec,hz:bestLag>0&&voiced>.28?srDecim/bestLag:0,voiced,rms});
+  }
+  return track;
+}
+function hzToPitchClass(hz){const midi=69+12*Math.log2(hz/440);return((Math.round(midi)%12)+12)%12}
+// 曲全体のピッチクラス分布(クロマ)を、有声度×音量で重み付けして音階テンプレートと照合する。
+// 「原曲キー」というより「今ある音の集まりに一番合う型」を探す実用的なやり方。
+// 喋りだけの素材でも、母音の音高分布から最も合う型が出る(強い確信は持てないが、無いよりまし)。
+function estimateScale(f0Track){
+  const chroma=new Float64Array(12);
+  let voicedWeight=0,totalWeight=0;
+  for(const f of f0Track){
+    totalWeight+=f.rms;
+    if(f.hz>0){const w=f.rms*f.voiced;chroma[hzToPitchClass(f.hz)]+=w;voicedWeight+=w}
+  }
+  if(voicedWeight<=0)return null; // ピッチが一切拾えない(全部打楽器的な素材)。無理に決めない。
+  let best=null;
+  for(const tmpl of SCALE_TEMPLATES)for(let root=0;root<12;root++){
+    let score=0;for(const iv of tmpl.intervals)score+=chroma[(root+iv)%12];
+    if(!best||score>best.score)best={root,name:tmpl.name,intervals:tmpl.intervals,score};
+  }
+  const voicedRatio=totalWeight>0?voicedWeight/totalWeight:0;
+  return{root:best.root,name:best.name,intervals:best.intervals,confidence:Math.min(1,voicedRatio*1.4)};
+}
+let pitchAnalysisSr=44100; // tagSliceWithPitchが秒への換算に使う。runTranslateで実際のsrに合わせる。
+// スライス1個の代表ピッチクラスを、円環平均(sin/cos平均)で出す。中央値だと0/11の境界を
+// またぐ音で誤るため。有声比率が低ければ(子音・破裂音主体)ピッチ無しとして扱う。
+function tagSliceWithPitch(sl,f0Track,scale){
+  let sumSin=0,sumCos=0,weight=0,voicedFrames=0,frames=0;
+  const startSec=sl.start/pitchAnalysisSr,endSec=sl.end/pitchAnalysisSr;
+  for(const f of f0Track){
+    if(f.tSec<startSec||f.tSec>=endSec)continue;
+    frames++;
+    if(f.hz>0){
+      voicedFrames++;
+      const midi=69+12*Math.log2(f.hz/440),angle=(midi%12)/12*2*Math.PI;
+      sumSin+=Math.sin(angle)*f.voiced;sumCos+=Math.cos(angle)*f.voiced;weight+=f.voiced;
+    }
+  }
+  sl.voicedRatio=frames?voicedFrames/frames:0;
+  if(weight<=0||sl.voicedRatio<.25){sl.pitchClass=-1;sl.degree=-1;sl.onScale=false;return}
+  let angle=Math.atan2(sumSin,sumCos);if(angle<0)angle+=2*Math.PI;
+  const pc=Math.round(angle/(2*Math.PI)*12)%12;
+  sl.pitchClass=pc;
+  if(!scale){sl.degree=-1;sl.onScale=false;return}
+  let bestI=0,bestDist=99;
+  for(let i=0;i<scale.intervals.length;i++){
+    const deg=(scale.root+scale.intervals[i])%12;
+    let d=Math.abs(pc-deg);d=Math.min(d,12-d);
+    if(d<bestDist){bestDist=d;bestI=i}
+  }
+  sl.degree=bestI;sl.onScale=bestDist<=1; // 半音以内なら音階内とみなす
+}
+// キーから、0半音を含む上昇/下降の半音刻みラダーを作る(完全5度=7半音の範囲に絞る)。
+// 度数だけを踏むので、今までのクロマチックな滑りが「キーの中を動く」滑りになる。
+// 検出できなかった場合は、元の0〜5半音のクロマチックな滑りへ黙ってフォールバックする。
+function scaleSemitoneLadder(scale,rise){
+  if(!scale)return rise?[0,1,2,3,4,5]:[5,4,3,2,1,0];
+  const set=new Set();
+  for(const iv of scale.intervals){set.add(iv);set.add(iv+12)}
+  const sorted=[...set].filter(v=>v<=7).sort((a,b)=>a-b);
+  if(sorted.length<2)return rise?[0,2,4,5]:[5,4,2,0];
+  return rise?sorted:sorted.slice().reverse();
+}
+function scaleStepSemitone(scale,index){
+  const ladder=scaleSemitoneLadder(scale,true);
+  return ladder[((index%ladder.length)+ladder.length)%ladder.length];
+}
+// 音階の度数を指定してスライスを選ぶ。無ければ「ピッチのある別の度数」、それも無ければ通常選択。
+function pickSliceByDegree(slices,rng,degree){
+  const exact=slices.filter(s=>s.degree===degree);
+  if(exact.length)return pick(exact,rng);
+  const anyPitched=slices.filter(s=>typeof s.degree==="number"&&s.degree>=0);
+  if(anyPitched.length)return pick(anyPitched,rng);
+  return pickWeightedSlice(slices,rng,false);
+}
+// 無声(打楽器的)なスライスを選ぶ。KILLERの「ラップの詰め」など、粒立ちが欲しい所で使う。
+function pickPercussiveSlice(slices,rng){
+  const perc=slices.filter(s=>!(typeof s.degree==="number"&&s.degree>=0));
+  return perc.length?pick(perc,rng):pick(slices,rng);
+}
+
 function grooveCell(rng,ninjaMode){if(ninjaMode)return pick([[0],[0,.5],[0,.75],[0,.5,.75]],rng);return pick([[0],[0,.5],[0,.25,.5,.75],[0,.25,.5,.75,.875]],rng)}
 function renderBeatCell(out,src,beatStart,beatLength,cell,sl,sr,gain,rng,natural){for(let i=0;i<cell.length;i++){const pos=cell[i],next=i+1<cell.length?cell[i+1]:1,dest=beatStart+Math.floor(pos*beatLength),space=Math.max(1,Math.floor((next-pos)*beatLength)),len=natural?Math.min(Math.floor(space*.92),Math.max(Math.floor(sr*.06),sl.length)):Math.max(Math.floor(sr*.025),Math.min(sl.length,Math.floor(space*(.58+rng()*.24))));if(natural)renderNatural(out,src,dest,sl,len,gain,rng);else renderOneShot(out,src,dest,sl.start,len,gain)}}
 function renderLongPhrase(out,src,dest,start,target,gain){
@@ -2830,6 +2985,33 @@ function renderKillerAccelPattern(out,src,base,beat,slices,sr,rng,hard){
  const accelCells=[[0],[0],[0,.5],[0,.25,.5,.625,.75,.875]];
  for(let q=0;q<4;q++)renderBeatCell(out,src,base+Math.floor(q*beat),beat,accelCells[q],accelSlice,sr,(hard?.82:.68)+rng()*.08,rng,!hard);
 }
+// KILLER固有：「Lose Yourself」的な、詰め込んだフロウ。
+// 休符は小節頭に固定した位置に置く。位置が毎回同じだから、休みそのものが
+// 「次が来る」予感になる(位置がバラバラだとただの穴で終わる)。
+// 「休ツタン、つたたた」を4小節でAABA的に変化させる:
+//   roll(1,2回目・地の詰め) → land(3回目・少し短く着地) → release(4回目・連打の壁で解放)
+function renderKillerFlowBar(out,src,base,beat,slices,sr,rng,hard,variant){
+ const pickup=Math.floor(beat*.16); // 小節頭の休み＝助走
+ const dest0=base+pickup,gap=Math.floor(beat*.09);
+ const sl1=pickPercussiveSlice(slices,rng);
+ renderOneShot(out,src,dest0,sl1.start,Math.min(sl1.length,Math.floor(beat*.10)),(hard?.86:.62)+rng()*.08); // ツ
+ renderOneShot(out,src,dest0+gap,sl1.start,Math.min(sl1.length,Math.floor(beat*.10)),(hard?.8:.58)+rng()*.08); // タン
+ const tailStart=dest0+gap*2;
+ if(variant==="release"){
+   const n=6; // 4回目：解放。連打の壁で一気に弾ける
+   for(let i=0;i<n;i++){
+     const d=tailStart+Math.floor(i*beat*.55/n),sl=pickPercussiveSlice(slices,rng);
+     renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,Math.floor(beat*.06))),.9+rng()*.08);
+   }
+ }else{
+   const n=variant==="land"?3:4; // 3回目(land)は最後の一撃を長めにして着地感を出す
+   for(let i=0;i<n;i++){
+     const d=tailStart+Math.floor(i*(beat*.55)/n),sl=pickPercussiveSlice(slices,rng);
+     const len=variant==="land"&&i===n-1?Math.floor(beat*.16):Math.floor(beat*.07);
+     renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,len)),.82+rng()*.1);
+   }
+ }
+}
 function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
  const slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
@@ -2850,6 +3032,12 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
    // 4スライス固定パターンをKiller A/Bの両方へ追加。終盤ほど発生率を上げて畳みかける。
    if(rng()<.30+progress*.15){
      renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,hard);
+     continue;
+   }
+   // フロウ(息継ぎがリズムになる詰め方)。4小節周期でAABA的に変化させる。
+   if(rng()<.32){
+     const variant=["roll","roll","land","release"][b%4];
+     renderKillerFlowBar(out,src,base,beat,slices,sr,rng,hard,variant);
      continue;
    }
    if(hard){
@@ -2894,6 +3082,60 @@ function renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng){
     highPassInPlace(out,dest,hitLen,sr,160); // 低域を軽く削って団子状の濁りを防ぐ
   }
 }
+// BANKER固有：4つ打ちだけでなく、サンプリングドラマーとしての小技を持たせる。
+// 音量と休符の対比を自分のトラックの中だけで作る(他キャラには一切干渉しない)。
+function renderBankerJungleChop(out,src,base,beat,slices,sr,rng){
+  // アーメン刻み風：裏に食い込む位置へキック/スネア役を置く。
+  const cells=[0,.375,.5,.75,.875],roles=[.95,.6,.85,.55,.7];
+  for(let i=0;i<cells.length;i++){
+    const dest=base+Math.floor(cells[i]*beat*4);
+    const sl=slices[(i*2)%slices.length];
+    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.14)),roles[i]*(.9+rng()*.1));
+  }
+}
+function renderBankerShuffle(out,src,base,beat,slices,sr,rng){
+  // 3連ハネ：拍の頭と、3連符の最後だけを軽く添える。
+  for(let q=0;q<4;q++){
+    const dest=base+Math.floor(q*beat);
+    const sl=slices[(q*3)%slices.length];
+    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.3)),.88+rng()*.08);
+    if(q%2===0){
+      const d2=dest+Math.floor(beat*2/3),sl2=slices[(q*3+1)%slices.length];
+      renderOneShot(out,src,d2,sl2.start,Math.min(sl2.length,Math.floor(beat*.16)),.6+rng()*.08);
+    }
+  }
+}
+function renderBankerRoll(out,src,base,beat,slices,sr,rng){
+  // ロール：前半2拍はそのまま、後半2拍を16分で埋めてタメを作り、次の小節へなだれ込む。
+  for(let q=0;q<2;q++){
+    const dest=base+Math.floor(q*beat),sl=slices[q%slices.length];
+    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.5)),.9+rng()*.06);
+  }
+  const rollStart=base+Math.floor(beat*2),n=8;
+  for(let i=0;i<n;i++){
+    const d=rollStart+Math.floor(i*beat*2/n),sl=slices[(i*2+1)%slices.length];
+    renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.015),Math.min(sl.length,Math.floor(beat*.08))),.7+i/n*.25);
+  }
+}
+function renderBankerBreak(out,src,base,beat,slices,sr,rng){
+  // ブレイク：小節の頭だけ強く鳴らし、残りは狙って完全な休符にする。
+  // これは無音バグではなく武器。「たまたま無音」と「狙った無音」は別物にしておく。
+  const sl=slices[0];
+  renderOneShot(out,src,base,sl.start,Math.min(sl.length,Math.floor(beat*.4)),1.0);
+}
+const BANKER_PHRASES=[
+  {name:"floor",w:.45,fn:renderGabberFourOnFloor},
+  {name:"jungle",w:.2,fn:renderBankerJungleChop},
+  {name:"shuffle",w:.15,fn:renderBankerShuffle},
+  {name:"roll",w:.12,fn:renderBankerRoll},
+  {name:"break",w:.08,fn:renderBankerBreak},
+];
+function pickBankerPhrase(rng){
+  const total=BANKER_PHRASES.reduce((s,p)=>s+p.w,0);
+  let r=rng()*total;
+  for(const p of BANKER_PHRASES){if((r-=p.w)<=0)return p}
+  return BANKER_PHRASES[0];
+}
 // --- BANKER（旧Banker）：NINJA/KILLERの単純合成ではなく、独自の性格を持つ。
 // 「几帳面・機械的・正確」＝銀行員らしい性格として、ズレのない四つ打ちを核にする。
 function makeBankerA(src,sr,bpm,bars,total,attackList,rng,slicePool){
@@ -2902,9 +3144,11 @@ function makeBankerA(src,sr,bpm,bars,total,attackList,rng,slicePool){
   const halfway=Math.floor(bars/2);
   for(let b=0;b<bars;b++){
     const base=Math.floor(b*bar);
-    renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng);
+    const phrase=pickBankerPhrase(rng);
+    phrase.fn(out,src,base,beat,slices,sr,rng);
     // BANKER固有：感情の起伏ではなく、後半から正確な裏打ちレイヤーを機械的に追加する(ランダムではなく確定)。
-    if(bars>=8&&b>=halfway){
+    // ただしブレイクの小節には足さない。狙った休符を台無しにしないため。
+    if(bars>=8&&b>=halfway&&phrase.name!=="break"){
       for(let e=0;e<4;e++){
         const dest=base+Math.floor((e+.5)*beat);
         const sl=slices[(e*5+2)%slices.length];
@@ -2920,15 +3164,16 @@ function makeBankerB(src,sr,bpm,bars,total,attackList,rng,slicePool){
   const halfway=Math.floor(bars/2);
   for(let b=0;b<bars;b++){
     const base=Math.floor(b*bar);
-    renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng);
-    // 裏拍にも均等な刻みを足し、机帳面さ・機械的な正確さを強調する。
-    for(let e=0;e<4;e++){
+    const phrase=pickBankerPhrase(rng);
+    phrase.fn(out,src,base,beat,slices,sr,rng);
+    // 裏拍にも均等な刻みを足し、机帳面さ・機械的な正確さを強調する。ブレイクの小節は空けたままにする。
+    if(phrase.name!=="break")for(let e=0;e<4;e++){
       const dest=base+Math.floor((e+.5)*beat);
       const sl=slices[(e*2+1)%slices.length];
       renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.2)),.42+rng()*.06);
     }
     // BANKER固有：後半からは16分単位まで正確さを上げる(決め打ち、ランダムに頼らない機械的エスカレーション)。
-    if(bars>=8&&b>=halfway){
+    if(bars>=8&&b>=halfway&&phrase.name!=="break"){
       for(let s=0;s<4;s++){
         const dest=base+Math.floor((s+.25)*beat);
         const sl=slices[(s*3+1)%slices.length];
@@ -3093,6 +3338,26 @@ function makeWitchA(src,sr,bpm,bars,total,attackList,rng,slicePool){
  bitcrushInPlace(out,9,2);
  return out
 }
+// WITCH固有：ジャズボーカルの発想。音階から外れて暴れても、必ず「戻す」ことで芸になる。
+// ブルーノート(1音だけ外れてすぐ隣の音階内へ戻る)の、フレーズ規模版。
+function renderWitchWander(out,src,base,barLen,slices,sr,rng,scale){
+  const sl=pick(slices,rng);
+  const wanderLen=Math.floor(barLen*(.55+rng()*.25));
+  renderLongPhrase(out,src,base,sl.start,wanderLen,.6+rng()*.15);
+  const landStart=base+wanderLen,landLen=Math.max(0,barLen-wanderLen);
+  if(landLen<=Math.floor(sr*.05))return;
+  const rooted=scale?slices.filter(s=>s.degree===0):[];
+  renderPitchFall(out,src,landStart,rooted.length?pick(rooted,rng):sl,landLen,.68+rng()*.1); // ルートへ着地
+}
+// WITCH固有：同じフレーズを「荒い版」と「音階に合わせた清書版」で2回鳴らす。
+// 1回目の逸脱を2回目が回収するので、暴れが芸に聞こえる(単に外れっぱなしにしない)。
+function renderWitchWildThenClean(out,src,base,beat,slices,sr,rng,scale){
+  const sl=pick(slices,rng),len=Math.floor(beat*(.8+rng()*.4));
+  renderReversedOneShot(out,src,base,sl.start,Math.min(sl.length,len),.6+rng()*.12); // 荒い版
+  const onScale=scale?slices.filter(s=>s.onScale):[];
+  const cleanSlice=onScale.length?pick(onScale,rng):sl;
+  renderOneShot(out,src,base+Math.floor(beat*1.1),cleanSlice.start,Math.min(cleanSlice.length,len),.62+rng()*.1); // 清書版
+}
 function makeWitchB(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
  const slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
@@ -3107,6 +3372,11 @@ function makeWitchB(src,sr,bpm,bars,total,attackList,rng,slicePool){
    if(rng()<.6+progress*.2){
      const startBeat=Math.floor(rng()*3),dest=base+Math.floor(startBeat*beat),sl=pick(slices,rng);
      renderStutterBurst(out,src,dest,sl,beat*1.2,sr,rng,5+Math.floor(rng()*5),.5);
+   }
+   // ジャズボーカル的な逸脱→回収。控えめな確率で、たまに大きく暴れる。
+   if(rng()<.22+progress*.15){
+     if(rng()<.5)renderWitchWander(out,src,base,bar,slices,sr,rng,detectedScale);
+     else renderWitchWildThenClean(out,src,base,beat,slices,sr,rng,detectedScale);
    }
  }
  bitcrushInPlace(out,7,3);
@@ -3167,10 +3437,11 @@ function renderPitchRise(out,src,dest,sl,target,gain){
  const release=Math.min(Math.floor(target*.18),Math.max(128,Math.floor(target*.08)));
  const loopStart=sl.start+Math.floor(sl.length*.35);
  const loopLength=Math.max(2,sl.end-loopStart);
+ const ladder=scaleSemitoneLadder(detectedScale,true); // キーの中を昇る。検出できなければ従来通りクロマチック
  let phase=0;
  for(let i=0;i<target&&dest+i<out.length;i++){
    const progress=i/Math.max(1,target-1);
-   const semitone=Math.min(5,Math.floor(progress*6));
+   const semitone=ladder[Math.min(ladder.length-1,Math.floor(progress*ladder.length))];
    const ratio=Math.pow(2,semitone/12);
    let pos;
    if(phase<sl.length-1)pos=sl.start+phase;
@@ -3190,10 +3461,11 @@ function renderPitchFall(out,src,dest,sl,target,gain){
  const release=Math.min(Math.floor(target*.18),Math.max(128,Math.floor(target*.08)));
  const loopStart=sl.start+Math.floor(sl.length*.35);
  const loopLength=Math.max(2,sl.end-loopStart);
+ const ladder=scaleSemitoneLadder(detectedScale,false); // キーの中を下る。検出できなければ従来通りクロマチック
  let phase=0;
  for(let i=0;i<target&&dest+i<out.length;i++){
    const progress=i/Math.max(1,target-1);
-   const semitone=Math.max(0,5-Math.floor(progress*6));
+   const semitone=ladder[Math.min(ladder.length-1,Math.floor(progress*ladder.length))];
    const ratio=Math.pow(2,semitone/12);
    let srcPos;
    if(phase<sl.length-1)srcPos=sl.start+phase;
@@ -3248,7 +3520,7 @@ function tripletPatternTwo(out,src,base,beat,slices,sr,rng,hard){
  let noteIndex=0;
  for(let beatIdx=0;beatIdx<4;beatIdx++){
    for(let t=0;t<3;t++){
-     const semitone=noteIndex%6;
+     const semitone=scaleStepSemitone(detectedScale,noteIndex); // キーの中を巡回。検出できなければ従来通り6半音周期
      const dest=base+Math.floor(beatIdx*beat+t*(beat/3));
      renderPitchedOneShot(out,src,dest,sl.start,Math.min(sl.length,hitLen),gain,semitone);
      noteIndex++;
