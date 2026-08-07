@@ -3064,10 +3064,17 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
      continue;
    }
    if(hard){
-     // A: 基本は1/8・1/16の刻み。小節ごとに緩急の型を1つだけ選ぶ(混ぜない)。
-     // chop(刻みのみ)が最も多く、hold/burst/restは「たまに」の扱いにとどめる。
-     const roll=rng();
-     const mode=roll<.15?"hold":roll<.30?"burst":roll<.45?"rest":"chop";
+     // A: 基本は1/8・1/16の刻み。緩急は小節1つ単位ではなく、4小節をひとかたまりの
+     // フレーズとして考える(KILLERのフロウと同じ発想)。小節ごとに独立でサイコロを
+     // 振ると、burstの隣にrestが来るような脈絡のない並びになりやすいため。
+     //   1番目: 必ずchop(基準を作る) → 2番目: 大体chop、たまに色を足す
+     //   → 3番目: ひねり(緊張を作る) → 4番目: リリース(休むか、大きく打ち切るか)
+     const phase=b%4;
+     let mode;
+     if(phase===3)mode=rng()<.5?"rest":"burst";
+     else if(phase===2)mode=rng()<.55?"burst":(rng()<.5?"hold":"chop");
+     else if(phase===1)mode=rng()<.25?"hold":"chop";
+     else mode="chop";
      const specialBeat=mode==="hold"?Math.floor(rng()*4):3; // 保持は拍を選ぶ。連打/休符は4拍目に固定
      for(let q=0;q<4;q++){
        const dest=base+Math.floor(q*beat);
