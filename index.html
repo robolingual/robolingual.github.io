@@ -1264,13 +1264,17 @@ async function runTranslate(){
     const totalD=Math.floor(sr*(60/bpm)*4); // Dは常に固定1小節(4拍)ちょうど。4/8小節トグルや旧来の「4小節の箱」とは無関係の独立した一撃必殺技。
     await loadSoundLogo();
     renderedSoundLogo=buildSoundLogoTrack(total,sr,bpm,bars);
-    const sourceSlices=makeSlices(mono,sr,attacks);
-    const variantPools=splitVariantSlices(sourceSlices,mono,sr);
+    const rawSlices=makeSlices(mono,sr,attacks);
+    // 音量のアタックだけでは見えない、話者/感情/ノリの変わり目を音色トラックで探し、
+    // 長めのスライスの中に隠れていたら追加で割る。単語の頭出し精度を上げるための下地。
+    pitchAnalysisSr=sr;
+    const pitchTrack=detectF0Track(decimateForPitch(mono,sr,8000),8000);
+    const timbreTrack=detectTimbreTrack(decimateForPitch(mono,sr,8000),8000);
+    const sourceSlices=splitSlicesOnTimbre(rawSlices,timbreTrack,mono,sr);
+    const variantPools=splitVariantSlices(sourceSlices,mono,sr,timbreTrack);
     // キー推定とスライスへのピッチタグ付け。ここで完結し、他の処理には影響しない。
     // splitVariantSlicesはスライスを複製せず同じオブジェクトを配るので、
     // ここで付けたタグはa/b/c/d全グループとEx(D)の生成側からも見える。
-    pitchAnalysisSr=sr;
-    const pitchTrack=detectF0Track(decimateForPitch(mono,sr,8000),8000);
     detectedScale=estimateScale(pitchTrack);
     for(const sl of sourceSlices)tagSliceWithPitch(sl,pitchTrack,detectedScale);
     updateExInterval(detectedScale);
@@ -2717,7 +2721,7 @@ function sliceTextureScore(sl,src,sr){
   const zcrRate=zcr/Math.max(1,(earlyEnd-start)+(bodyEnd-bodyStart));
   return transient*1.6+zcrRate*12+peak*.35;
 }
-function splitVariantSlices(slices,src,sr){
+function splitVariantSlices(slices,src,sr,timbreTrack){
   let unique=[];
   const seen=new Set();
   for(const sl of slices){
@@ -2741,10 +2745,17 @@ function splitVariantSlices(slices,src,sr){
   const ranked=unique.map(sl=>({sl,score:sliceTextureScore(sl,src,sr)})).sort((x,y)=>y.score-x.score);
   const n=ranked.length,q=Math.max(1,Math.ceil(n/4));
   const byLenDesc=arr=>arr.slice().sort((x,y)=>(y.sl.length-x.sl.length)||(x.score-y.score)).map(x=>x.sl);
+  // D群(忍者向け・長く滑らか)だけ、音色の目線で一段絞る。アタックの強さでは見えない
+  // 話者/感情の変わり目が中に紛れていそうな(音色が不均質な)候補を、下位25%だけ弾く。
+  const filterHeterogeneous=arr=>{
+    if(!timbreTrack||arr.length<6)return arr;
+    const withVar=arr.map(x=>({...x,tVar:sliceTimbreVariance(x.sl,timbreTrack,sr)})).sort((a,b)=>a.tVar-b.tVar);
+    return withVar.slice(0,Math.max(4,Math.ceil(withVar.length*.75)));
+  };
   const groupA=ranked.slice(0,q).map(x=>x.sl);           // 最も強いトランジェント（percussive）
   const groupB=byLenDesc(ranked.slice(q,q*2));           // やや強め、長さ優先で使いやすく
   const groupC=byLenDesc(ranked.slice(q*2,q*3));         // 中間的な質感
-  const groupD=byLenDesc(ranked.slice(q*3));             // 最も滑らか・長い（sustained）
+  const groupD=byLenDesc(filterHeterogeneous(ranked.slice(q*3))); // 最も滑らか・長い（sustained）、音色も均質寄り
   const ensure=(arr,fallback)=>arr&&arr.length?arr:fallback;
   const a=ensure(groupA,ranked.map(x=>x.sl));
   const b=ensure(groupB,a);
@@ -2828,6 +2839,74 @@ function estimateScale(f0Track){
   const voicedRatio=totalWeight>0?voicedWeight/totalWeight:0;
   return{root:best.root,name:best.name,intervals:best.intervals,confidence:Math.min(1,voicedRatio*1.4)};
 }
+// 音色(音の明るさ)を時間領域だけで安く近似する。FFTは持たないので、簡易ハイパス
+// (隣接差分)のRMSと全体RMSの比を「明るさ」として使う。話者・感情・ノリの変化は
+// 音量には出ないことが多いが、この明るさやゼロ交差率(ZCR)には表れやすい。
+function detectTimbreTrack(monoDecim,srDecim){
+  const win=Math.max(64,Math.floor(srDecim*.04)),hop=Math.max(32,Math.floor(srDecim*.02));
+  const track=[];
+  for(let start=0;start+win<=monoDecim.length;start+=hop){
+    let energy=0,hiEnergy=0,zc=0,prev=monoDecim[start]||0;
+    for(let i=0;i<win;i++){
+      const v=monoDecim[start+i];
+      energy+=v*v;
+      const d=v-prev;hiEnergy+=d*d;
+      if((v>=0)!==(prev>=0))zc++;
+      prev=v;
+    }
+    const rms=Math.sqrt(energy/win),hiRms=Math.sqrt(hiEnergy/win);
+    track.push({tSec:start/srDecim,rms,brightness:rms>1e-6?hiRms/rms:0,zcr:zc/win});
+  }
+  return track;
+}
+// スライス内部で、音量では見えない音色の変わり目(話者・感情・ノリの切り替わり)を探す。
+// 前後の窓で明るさ/ZCRの平均が持続的にズレる場所を境目候補にする(瞬間的なブレは無視)。
+// 端に寄りすぎた変化点は、割っても意味のある長さが残らないため無視する。無ければ-1。
+function findTimbreBoundarySample(sl,timbreTrack,sr){
+  const startSec=sl.start/sr,endSec=sl.end/sr;
+  const inRange=timbreTrack.filter(f=>f.tSec>=startSec&&f.tSec<endSec&&f.rms>.004);
+  if(inRange.length<12)return -1;
+  const minEdgeSec=.09,winFrames=Math.max(3,Math.floor(inRange.length*.2));
+  let bestIdx=-1,bestScore=0;
+  for(let i=winFrames;i<inRange.length-winFrames;i++){
+    const t=inRange[i].tSec;
+    if(t-startSec<minEdgeSec||endSec-t<minEdgeSec)continue;
+    let beforeB=0,afterB=0,beforeZ=0,afterZ=0;
+    for(let j=i-winFrames;j<i;j++){beforeB+=inRange[j].brightness;beforeZ+=inRange[j].zcr}
+    for(let j=i;j<i+winFrames;j++){afterB+=inRange[j].brightness;afterZ+=inRange[j].zcr}
+    beforeB/=winFrames;afterB/=winFrames;beforeZ/=winFrames;afterZ/=winFrames;
+    const score=Math.abs(afterB-beforeB)*2.2+Math.abs(afterZ-beforeZ)*90;
+    if(score>bestScore){bestScore=score;bestIdx=i}
+  }
+  return bestScore<.5?-1:Math.floor(inRange[bestIdx].tSec*sr);
+}
+// アタックだけで区切ったスライスの中に音色の変わり目が隠れていたら、そこでも割る。
+// 短すぎるスライス(刻み用途、既に十分細かい)は対象外にする。
+function splitSlicesOnTimbre(slices,timbreTrack,src,sr){
+  const minSplitLen=Math.floor(sr*.22);
+  const out=[];
+  for(const sl of slices){
+    if(sl.length<minSplitLen){out.push(sl);continue}
+    const cut=findTimbreBoundarySample(sl,timbreTrack,sr);
+    if(cut<=sl.start||cut>=sl.end){out.push(sl);continue}
+    const snapped=snapToZeroCrossing(src,cut,Math.floor(sr*.004));
+    if(snapped<=sl.start||snapped>=sl.end){out.push(sl);continue}
+    out.push({start:sl.start,end:snapped,length:snapped-sl.start});
+    out.push({start:snapped,end:sl.end,length:sl.end-snapped});
+  }
+  return out;
+}
+// スライス内部で音色がどれだけブレているかを1つの数値にする。大きいほど、
+// 複数の声色(話者/感情)が1本のスライスに混ざっている疑いが強い。
+function sliceTimbreVariance(sl,timbreTrack,sr){
+  const startSec=sl.start/sr,endSec=sl.end/sr;
+  const inRange=timbreTrack.filter(f=>f.tSec>=startSec&&f.tSec<endSec&&f.rms>.004);
+  if(inRange.length<4)return 0;
+  let sumB=0,sumZ=0;for(const f of inRange){sumB+=f.brightness;sumZ+=f.zcr}
+  const meanB=sumB/inRange.length,meanZ=sumZ/inRange.length;
+  let varB=0,varZ=0;for(const f of inRange){varB+=(f.brightness-meanB)**2;varZ+=(f.zcr-meanZ)**2}
+  return Math.sqrt(varB/inRange.length)+Math.sqrt(varZ/inRange.length)*40;
+}
 let pitchAnalysisSr=44100; // tagSliceWithPitchが秒への換算に使う。runTranslateで実際のsrに合わせる。
 // スライス1個の代表ピッチクラスを、円環平均(sin/cos平均)で出す。中央値だと0/11の境界を
 // またぐ音で誤るため。有声比率が低ければ(子音・破裂音主体)ピッチ無しとして扱う。
@@ -2900,6 +2979,20 @@ function renderLongPhrase(out,src,dest,start,target,gain){
     out[dest+i]+=src[start+i]*gain*env;
   }
 }
+// ジャングルの「フロアタム」役。バンカーの4つ打ちはそのまま(ここでは触らない)で、
+// 他のキャラがこの刻みで絡んで初めてジャングルになる、という前提の共有リズム。
+// 参考譜面(アクセント位置が異なる3パターン)の書き起こし。16分グリッド(0-15)上の位置。
+// 実物とズレていたら、この配列の数字だけ直せばいい。
+const JUNGLE_TOM_PATTERNS=[
+  [0,1,4,5,8,9,12,13],
+  [1,2,5,6,9,10,13,14],
+  [2,3,6,7,10,11,14,15]
+];
+// 刻みの位置はどのキャラでも共通、1発ごとの鳴らし方(voiceFn)だけキャラの声に変える。
+function renderJungleTomLayer(base,beat,rng,voiceFn){
+  const pattern=pick(JUNGLE_TOM_PATTERNS,rng),step=beat/4;
+  for(let i=0;i<pattern.length;i++)voiceFn(base+Math.floor(pattern[i]*step),i,pattern.length);
+}
 function makeNinjaA(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4,slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
  for(let b=0;b<bars;b++){
@@ -2948,6 +3041,16 @@ function makeNinjaB(src,sr,bpm,bars,total,attackList,rng,slicePool){
      const sl=pickWeightedSlice(slices,rng,true),target=Math.min(barEnd-dest,Math.floor(beat*sustainBeats));
      if(rng()<.5)renderPitchRise(out,src,dest,sl,target,.42+rng()*.10);
      else renderPitchFall(out,src,dest,sl,target,.42+rng()*.10);
+   }
+   // フロアタムのリズムに、伸ばし+ピッチの「あーあー」で絡む回。バンカーの4つ打ちに
+   // 乗る前提の刻みなので、ここでは度数を軽く行き来させるだけで動きを作る。
+   if(rng()<.2+progress*.1){
+     const barEnd=Math.min(total,base+Math.floor(bar));
+     renderJungleTomLayer(base,beat,rng,(dest,i)=>{
+       const sl=pickSliceByDegree(slices,rng,i%2===0?0:1);
+       const len=Math.min(barEnd-dest,Math.max(Math.floor(sr*.05),Math.floor(beat*.22)));
+       if(len>0)renderNatural(out,src,dest,sl,len,.5+rng()*.12,rng);
+     });
    }
    // Ninja B固有：毎小節必ず1〜4拍の長い原音フレーズを流す。終盤ほど押し出しを強める。
    const startBeat=rng()<.72?0:Math.floor(rng()*4);
@@ -3055,6 +3158,17 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
    // 4スライス固定パターンをKiller A/Bの両方へ追加。終盤ほど発生率を上げて畳みかける。
    if(rng()<.30+progress*.15){
      renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,hard);
+     continue;
+   }
+   // フロアタム役(ジャングル)。バンカーの4つ打ちに絡む前提の刻みを、硬く短く打つ。
+   // hard(A)限定：Bは伸ばし主体なので、短い刻みを重ねるとキャラがぶれる。
+   if(hard&&rng()<.15){
+     renderJungleTomLayer(base,beat,rng,(dest,i)=>{
+       const sl=pickPercussiveSlice(slices,rng);
+       const accent=i%4===0?.92:(i%2===0?.8:.62);
+       renderOneShot(out,src,dest,sl.start,Math.max(Math.floor(sr*.02),Math.min(sl.length,Math.floor(beat*.09))),accent+rng()*.08);
+     });
+     highPassInPlace(out,base,barEnd-base,sr,160);
      continue;
    }
    // フロウ(息継ぎがリズムになる詰め方)。4小節周期でAABA的に変化させる。
@@ -3416,6 +3530,16 @@ function makeWitchB(src,sr,bpm,bars,total,attackList,rng,slicePool){
    if(rng()<.22+progress*.15){
      if(rng()<.5)renderWitchWander(out,src,base,bar,slices,sr,rng,detectedScale);
      else renderWitchWildThenClean(out,src,base,beat,slices,sr,rng,detectedScale);
+   }
+   // フロアタムのリズムに気まぐれに絡む回。バンカーの4つ打ちに乗る前提の刻みを、
+   // 律儀になぞらず間引く。たまに逆再生を混ぜて魔女らしい崩し方にする。
+   if(rng()<.18+progress*.1){
+     renderJungleTomLayer(base,beat,rng,(dest)=>{
+       if(rng()<.35)return;
+       const sl=pick(slices,rng),len=Math.max(Math.floor(sr*.02),Math.floor(beat*.1));
+       if(rng()<.3)renderReversedOneShot(out,src,dest,sl.start,Math.min(sl.length,len),.55+rng()*.12);
+       else renderOneShot(out,src,dest,sl.start,Math.min(sl.length,len),.55+rng()*.12);
+     });
    }
  }
  bitcrushInPlace(out,7,3);
