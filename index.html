@@ -42,7 +42,8 @@ input[type=file]{display:none}
 .mixer-main{min-width:0}
 .speed-panel{align-items:center}
 .speed-scale{display:grid;grid-template-columns:36px 32px;align-items:stretch;justify-content:center;gap:4px}
-.speed-labels{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;font-size:11px;padding:4px 0}
+.speed-labels{position:relative;height:100%;font-size:11px}
+.speed-labels span[data-rate]{position:absolute;right:0;transform:translateY(-50%)}
 .speed-slider{width:32px;height:100%;writing-mode:vertical-lr;direction:rtl;cursor:ns-resize}
 #waveBox{overflow:hidden}
 #waveStatus{position:absolute;left:12px;right:12px;z-index:4;font-weight:900;text-align:center;pointer-events:none}
@@ -312,13 +313,19 @@ main{padding:16px;overflow:visible}
   position:absolute;left:-127px;right:0;bottom:0;height:22px;z-index:0;
   border-radius:4px;display:flex;align-items:center;padding-left:9px;
   font:700 10px/1 Arial,Helvetica,sans-serif;letter-spacing:.10em;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.09)}
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.09);cursor:ew-resize}
 /* 帯は明るめに。文字は色を乗せず白で統一する。
    終端はスキンへ馴染ませたいので、始端より一段暗く落としている。 */
 .mode[data-mode="ninja"]  .row-band{background:linear-gradient(90deg,#22b0b0,#0e4a4a);color:#fff}
 .mode[data-mode="killer"] .row-band{background:linear-gradient(90deg,#c73a2e,#521712);color:#fff}
 .mode[data-mode="banker"] .row-band{background:linear-gradient(90deg,#c09328,#4e3d10);color:#fff}
 .mode[data-mode="witch"]  .row-band{background:linear-gradient(90deg,#a531bd,#43124d);color:#fff}
+
+/* ノブは指で覆うと今どちらを向いているか見えなくなる。ノブの下に覗く帯を
+   触ってもPANを操作できるよう、pan-unit自体は透過させ(クリックを奪わない)、
+   ノブ本体(円の実体がある範囲)だけ当たり判定を戻す。 */
+.pan-col,.pan-unit{pointer-events:none}
+.pan-knob{pointer-events:auto}
 
 /* --- PAN列はノブが帯より前に出るよう重ね順を上げる --- */
 .pan-col{z-index:2}
@@ -645,7 +652,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
    透明な当たり判定を重ねて広げる。文字を動かすと目盛りとつまみの位置が
    ずれてしまうので、padding ではなく重ねる形にしてある。
    右へは伸ばさない。伸ばすとすぐ隣のスライダーの掴みを食う。 */
-.speed-labels span[data-rate]{position:relative;cursor:pointer}
+.speed-labels span[data-rate]{cursor:pointer}
 .speed-labels span[data-rate]::after{content:"";position:absolute;inset:-22px 0 -22px -20px}
 
 </style>
@@ -1514,6 +1521,34 @@ document.querySelectorAll(".pan-slider").forEach(el=>{
     updatePanKnob(el);
   });
   updatePanKnob(el); // 初期表示(センター)
+});
+// --- キャラの帯(NINJA等)を触ってもPANを動かせるようにする ----------------
+// ノブは指で覆うと今どちらを向いているか見えなくなる。帯側を触って左右に
+// 動かしても同じPANへ効くようにする。テンポパネルと同じく、触れた位置へ
+// 飛ばさず、動かした量だけ効かせる(掴んだ瞬間に値が跳ぶのを避けるため)。
+document.querySelectorAll(".mode").forEach(modeEl=>{
+  const band=modeEl.querySelector(".row-band"),slider=document.querySelector(`.pan-slider[data-mode="${modeEl.dataset.mode}"]`);
+  if(!band||!slider)return;
+  let id=null,startX=0,startV=0,span=1;
+  band.addEventListener("pointerdown",e=>{
+    if(id!==null)return;
+    id=e.pointerId;
+    startX=e.clientX;
+    startV=Number(slider.value)||0;
+    span=Math.max(1,slider.closest(".pan-knob").getBoundingClientRect().width); // ノブ1個ぶんの幅で全域を動かす
+    try{band.setPointerCapture(id)}catch(_){}
+    e.preventDefault();
+  });
+  band.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id)return;
+    slider.value=String(Math.round(Math.max(-100,Math.min(100,startV+(e.clientX-startX)/span*200))));
+    slider.dispatchEvent(new Event("input",{bubbles:true}));
+  });
+  const release=e=>{if(id===null||e.pointerId!==id)return;id=null};
+  band.addEventListener("pointerup",release);
+  band.addEventListener("pointercancel",release);
+  window.addEventListener("pointerup",release);
+  window.addEventListener("pointercancel",release);
 });
 function stopRecordedPlayback(keepWave=true,resetOffset=true){
   if(performanceSource){try{performanceSource.onended=null;performanceSource.stop()}catch(_){}try{performanceSource.disconnect()}catch(_){}}
@@ -2598,6 +2633,11 @@ function jumpToRate(rate){
   updateSpeedGauge(); // 値の直接書き換えではinputが飛ばない
 }
 document.querySelectorAll(".speed-labels span[data-rate]").forEach(el=>{
+  // つまみは値(-1000〜1000)に対して線形、レートには対数(3^(-v/1000))で乗る。
+  // 目盛りを均等配置すると0.5×・2.0×がつまみの実際の位置とズレるため、
+  // rateToSliderで実際の値へ変換してから同じ縮尺(上端⅓×=0% 〜 下端3.0×=100%)で置く。
+  const v=rateToSlider(Number(el.dataset.rate));
+  el.style.top=((1000-v)/20)+"%";
   // click ではなく pointerdown。触れた瞬間に飛ばしたいので、指を離すまで待たない。
   el.addEventListener("pointerdown",e=>{
     e.preventDefault();  // つまみの掴み直しや文字の選択を起こさせない
