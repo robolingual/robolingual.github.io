@@ -1291,13 +1291,10 @@ async function runTranslate(){
     {
       const melodyRng=mulberry32(cryptoSeed());
       const shapeUp=pick(CHAOS_MELODY_SHAPES,melodyRng),shapeDown=pick(CHAOS_MELODY_SHAPES,melodyRng);
-      // 「伸ばした歌」はビブラート的な工夫ではなく、単純に再生速度を大きく落とすことで
-      // 自然に得られる(半音を下げる=読み進む速さが遅くなる、単純なリサンプリングのため)。
-      // -36/-48半音は12の倍数(ちょうど3/4オクターブ下)なので、度数の補正(correction)を
-      // 足してもスケールから外れない。上(SOCIETY)を-36(0.125倍速)、下(TOKIO)を
-      // -48(0.0625倍速、約1小節=0.1秒ぶんの元素材で足りる)にして、下のほうがより深く遅い。
-      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,-36,melodyRng),sr);
-      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-48,melodyRng),sr);
+      // 素材の中に実在する長い発音を優先して使うため、大きく速度を落とす必要はない。
+      // レジスターは完全5度(7半音、全スケールに共通の音程)ぶんだけ(+7→0、-12→-19)。
+      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,0,melodyRng),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-19,melodyRng),sr);
     }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
@@ -3068,14 +3065,16 @@ const CHAOS_MELODY_SHAPES=[
   [2,0,3,1,4,0,2],
 ];
 // 素材を検出したスケールに沿って「歌わせる」。1小節に1音、声・音程が乗っている
-// スライス(voicedRatio高め)の頭を読み始め位置にする。スライス自身が持つ
-// ピッチクラスから目標の度数への最短補正(-6〜+5半音)をかけ、レジスター
-// (大きく下げるほど再生速度も遅くなり、伸ばした歌に聞こえる)はoctaveShiftで足す。
+// スライス(voicedRatio高め)の中から「元々長く鳴っている(=既に伸ばした発音に近い)」
+// ものを優先して使う。短い断片を無理に引き延ばすより、素材の中に実在する長い発音
+// (伸ばした語尾、長めの単語など)をそのまま使うほうが自然に決まっている。
+// スライス自身が持つピッチクラスから目標の度数への最短補正(-6〜+5半音)をかけ、
+// レジスターの違いはoctaveShiftで足す。
 function renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,scale,shape,octaveShift,rng){
   const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
   const minLen=Math.floor(sr*.12);
-  const voiced=sourceSlices.filter(s=>s.length>minLen&&s.voicedRatio>=.4).sort((a,b)=>a.start-b.start);
-  const pool=voiced.length?voiced:sourceSlices.filter(s=>s.length>minLen).sort((a,b)=>a.start-b.start);
+  const voiced=sourceSlices.filter(s=>s.length>minLen&&s.voicedRatio>=.4).sort((a,b)=>b.length-a.length);
+  const pool=voiced.length?voiced:sourceSlices.filter(s=>s.length>minLen).sort((a,b)=>b.length-a.length);
   if(!pool.length)return out;
   const root=scale?scale.root:0;
   for(let b=0;b<bars;b++){
