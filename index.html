@@ -1825,7 +1825,11 @@ function slipPlayWindow(fraction){
   src.loopStart=0;
   src.loopEnd=durSec;
   const gain=ctx.createGain();gain.gain.value=1;
-  src.connect(gain).connect(getChaosOut());
+  // chaosOutへ直結せずchaosBusへ戻す。スリップ中はmixerMasterがミュートされていて
+  // chaosBus本来の入力が無音になっているだけなので、スリップの音自体をここに繋げば
+  // 八卦盤のリアルタイム効果(dry/wetの混ぜとキャプチャリング)がそのまま乗る。
+  // 盤が中央(ドライ)のままなら dryGain=1 で従来と音量は変わらない。
+  src.connect(gain).connect(getChaosBus());
   const t0=ctx.currentTime;
   src.start(t0,0);
   slipBandDur=durSec;
