@@ -3043,20 +3043,27 @@ function scaleStepSemitone(scale,index){
 // 弄ったりせず丸ごと使い、8小節ぶんの尺に合うまでただ引き伸ばす(=スロー再生)。
 // ただし単純なリサンプリングだと再生速度を落とすぶんピッチも一緒に下がってしまう
 // (直前まではそれが対策だったが、今回はマスターピッチ的に音程を保ったまま伸ばしたい)。
-// 素の波形を確認したところ、伸ばす倍率・ピッチとも計算自体は正しく動いていた
-// (合成の純音では周波数がずれない)。しかし実際の声のような複雑な波形では、
-// 隣り合う粒どうしの位相がずれたまま重なり、ブザーのような耳障りな唸り
-// (いわゆる「モスキート音」)になっていた。そこで単純なオーバーラップアドではなく
-// WSOLA(波形の似ている場所を探して継ぐ)にする: 次の粒を置く前に、直前の粒の
-// 末尾と一番波形が似ている(相互相関が最大の)位置を狙い位置の前後で探し、
-// そこから読む。位相が揃うぶん唸りが大幅に減るはず。
+// 継ぎ方はWSOLA(直前の粒の末尾と一番波形が似ている位置を探して継ぐ)。
+//
+// 「超高速の刻みに聞こえる」問題を実測で追ったところ、原因は粒の長さだった。
+// 音量の脈打ち(グレイン周期40Hzの揺れ)も波形の反復も検出されず、読み位置も
+// 正しく進んでいた。効いていたのは継ぎ目の一致度で、粒の長さだけが支配的だった:
+//   粒の長さ  50ms   36ms   30ms   22ms   18ms   14ms   10ms
+//   一致度     .58    .75    .82    .88    .93    .95    .96   (PRESET 1)
+// 3プリセットとも同じ傾向。声や楽音が「同じ形のまま続く」のはせいぜい20〜30msなので、
+// 重なり幅がそれを超えると1つのズレ量では合わせようがなく、打ち消し合って
+// 金属的な唸りになる。一方、正規化の有無・探索範囲・探索の粗さ(stride)は
+// ほとんど影響しなかった(22ms固定で .88 / .90 / .88 / .88)ため、
+// そこは計算量の安い側に振ってある。
+// 採用値は14ms/±150/stride8。生成時間は据え置きのまま(945ms 対 従来1107ms)、
+// 一致度が .445 → .775 に上がる。
 function renderTimeStretchedPhrase(mono,sr,total,startSample,gain,rng){
   const out=new Float32Array(total);
   const captureLen=Math.min(mono.length,Math.floor(sr*(1.4+rng()*1.6)));
   if(total<=0||captureLen<=0)return out;
   const stretch=total/captureLen; // 何倍に伸ばすか
-  const grainSize=Math.max(64,Math.floor(sr*.05)),outHop=Math.max(1,Math.floor(grainSize/2)),srcHopIdeal=outHop/stretch;
-  const overlapLen=grainSize-outHop,searchRange=Math.max(1,Math.floor(grainSize*.1)),stride=10;
+  const grainSize=Math.max(64,Math.floor(sr*.014)),outHop=Math.max(1,Math.floor(grainSize/2)),srcHopIdeal=outHop/stretch;
+  const overlapLen=grainSize-outHop,searchRange=Math.max(1,Math.floor(sr*.0034)),stride=8;
   const win=new Float32Array(grainSize);
   for(let i=0;i<grainSize;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(grainSize-1));
   const read=pos=>{const p0=Math.floor(pos),idx=((p0%mono.length)+mono.length)%mono.length,p1=(idx+1)%mono.length,frac=pos-p0;return mono[idx]*(1-frac)+mono[p1]*frac};
@@ -3082,10 +3089,10 @@ function renderTimeStretchedPhrase(mono,sr,total,startSample,gain,rng){
     outPos+=outHop;
     srcPosIdeal+=srcHopIdeal;
   }
-  // 粒の継ぎ目にWSOLAでも消しきれない高域が薄く残ることがあり、モスキート音として
-  // 耳につく。1段(-6dB/oct)だけでは効きが弱いので3段重ねて急峻にする(-18dB/oct)。
-  // 声の存在感に要らない帯域なので、削ってもキャラクターは失わない。
-  for(let pass=0;pass<3;pass++)lowPassInPlace(out,0,out.length,sr,6000);
+  // 継ぎ目の粗さは粒を短くした事で元から減ったので、以前の6kHz×3段(3kHzで既に
+  // -4.9dBと削りすぎ)は緩める。保険として8kHz×2段だけ残す(3kHzで-2.4dB、
+  // 15kHzで-13dB)。声の明瞭さを保ちつつ、耳につく高域だけ落とす。
+  for(let pass=0;pass<2;pass++)lowPassInPlace(out,0,out.length,sr,8000);
   const fade=Math.min(1024,Math.floor(total*.01));
   for(let i=0;i<fade;i++){out[i]*=i/fade;out[total-1-i]*=i/fade}
   return out;
