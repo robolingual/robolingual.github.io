@@ -3033,28 +3033,44 @@ function scaleStepSemitone(scale,index){
 // 弄ったりせず丸ごと使い、8小節ぶんの尺に合うまでただ引き伸ばす(=スロー再生)。
 // ただし単純なリサンプリングだと再生速度を落とすぶんピッチも一緒に下がってしまう
 // (直前まではそれが対策だったが、今回はマスターピッチ的に音程を保ったまま伸ばしたい)。
-// そこで簡易オーバーラップアド式のタイムストレッチにする: 短い粒(60ms、Hann窓)を
-// 一定間隔で出力に重ねて敷き詰めつつ、粒を拾う元の位置はその分だけゆっくり進める。
-// 粒自体は元の音をそのまま(リサンプリングせず)使うので、ピッチは変わらない。
+// 素の波形を確認したところ、伸ばす倍率・ピッチとも計算自体は正しく動いていた
+// (合成の純音では周波数がずれない)。しかし実際の声のような複雑な波形では、
+// 隣り合う粒どうしの位相がずれたまま重なり、ブザーのような耳障りな唸り
+// (いわゆる「モスキート音」)になっていた。そこで単純なオーバーラップアドではなく
+// WSOLA(波形の似ている場所を探して継ぐ)にする: 次の粒を置く前に、直前の粒の
+// 末尾と一番波形が似ている(相互相関が最大の)位置を狙い位置の前後で探し、
+// そこから読む。位相が揃うぶん唸りが大幅に減るはず。
 function renderTimeStretchedPhrase(mono,sr,total,startSample,gain,rng){
   const out=new Float32Array(total);
   const captureLen=Math.min(mono.length,Math.floor(sr*(1.4+rng()*1.6)));
   if(total<=0||captureLen<=0)return out;
   const stretch=total/captureLen; // 何倍に伸ばすか
-  const grainSize=Math.max(64,Math.floor(sr*.06)),outHop=Math.max(1,Math.floor(grainSize/2)),srcHop=outHop/stretch;
+  const grainSize=Math.max(64,Math.floor(sr*.05)),outHop=Math.max(1,Math.floor(grainSize/2)),srcHopIdeal=outHop/stretch;
+  const overlapLen=grainSize-outHop,searchRange=Math.max(1,Math.floor(grainSize*.1)),stride=10;
   const win=new Float32Array(grainSize);
   for(let i=0;i<grainSize;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(grainSize-1));
-  let outPos=0,srcPos=0;
+  const read=pos=>{const p0=Math.floor(pos),idx=((p0%mono.length)+mono.length)%mono.length,p1=(idx+1)%mono.length,frac=pos-p0;return mono[idx]*(1-frac)+mono[p1]*frac};
+  let outPos=0,srcPosIdeal=0,prevTail=null;
   while(outPos<total){
+    let offset=0;
+    if(prevTail){
+      let bestScore=-Infinity;
+      for(let d=-searchRange;d<=searchRange;d++){
+        let score=0;
+        for(let k=0;k<overlapLen;k+=stride)score+=prevTail[k]*read(startSample+srcPosIdeal+d+k);
+        if(score>bestScore){bestScore=score;offset=d}
+      }
+    }
+    const srcStart=startSample+srcPosIdeal+offset,grain=new Float32Array(grainSize);
+    for(let i=0;i<grainSize;i++)grain[i]=read(srcStart+i);
     for(let i=0;i<grainSize;i++){
       const o=outPos+i;
       if(o>=total)break;
-      const s=(startSample+srcPos+i)%mono.length;
-      const p0=Math.floor(s),p1=(p0+1)%mono.length,frac=s-p0;
-      out[o]+=(mono[p0]*(1-frac)+mono[p1]*frac)*win[i]*gain;
+      out[o]+=grain[i]*win[i]*gain;
     }
+    prevTail=grain.slice(grainSize-overlapLen);
     outPos+=outHop;
-    srcPos+=srcHop;
+    srcPosIdeal+=srcHopIdeal;
   }
   const fade=Math.min(1024,Math.floor(total*.01));
   for(let i=0;i<fade;i++){out[i]*=i/fade;out[total-1-i]*=i/fade}
