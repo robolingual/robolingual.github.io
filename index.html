@@ -1286,15 +1286,19 @@ async function runTranslate(){
     detectedScale=estimateScale(pitchTrack);
     for(const sl of sourceSlices)tagSliceWithPitch(sl,pitchTrack,detectedScale);
     updateExInterval(detectedScale);
-    // 八卦盤の上下(SOCIETY=ハイパス/TOKIO=ローパス)を振り切った時に鳴る、素材自身の歌。
+    // 八卦盤の上下(SOCIETY=ハイパス/TOKIO=ローパス)を振り切った時に鳴る、素材そのもの。
     // ここで1度だけ作っておき、鳴らすかどうか・混ざり量は八卦盤側でその場で決める。
+    // 「歌わせる」のはやめて、自然な発音のひとまとまりを切らず弄らず、8小節ぶんに
+    // 合うまでスロー再生するだけにした(renderStretchedPhrase参照)。
     {
       const melodyRng=mulberry32(cryptoSeed());
-      const shapeUp=pick(CHAOS_MELODY_SHAPES,melodyRng),shapeDown=pick(CHAOS_MELODY_SHAPES,melodyRng);
-      // 素材の中に実在する長い発音を優先して使うため、大きく速度を落とす必要はない。
-      // レジスターは完全5度(7半音、全スケールに共通の音程)ぶんだけ(+7→0、-12→-19)。
-      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,0,melodyRng),sr);
-      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-19,melodyRng),sr);
+      const minVoicedLen=Math.floor(sr*.12);
+      const voiced=sourceSlices.filter(s=>s.length>minVoicedLen&&s.voicedRatio>=.4).sort((a,b)=>b.length-a.length);
+      const anchors=(voiced.length?voiced:sourceSlices).slice(0,Math.max(1,Math.ceil((voiced.length||sourceSlices.length)*.5)));
+      const startUp=anchors[Math.floor(melodyRng()*anchors.length)].start;
+      const startDown=anchors[Math.floor(melodyRng()*anchors.length)].start;
+      renderedChaosMelodyUp=toAudioBuffer(renderStretchedPhrase(mono,sr,total,startUp,.9,melodyRng),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderStretchedPhrase(mono,sr,total,startDown,.9,melodyRng),sr);
     }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
@@ -3025,68 +3029,27 @@ function scaleStepSemitone(scale,index){
   const ladder=scaleSemitoneLadder(scale,true);
   return ladder[((index%ladder.length)+ladder.length)%ladder.length];
 }
-// 度数(0=ルート、1=2番目の音…スケールの音数を超えたら1オクターブ上へ)を半音へ変換する。
-// scaleStepSemitoneは連続的な滑り用の圧縮ラダーなので、ドレミの「何番目の音か」を
-// そのまま踏みたい歌メロには使えない。ここではscale.intervalsを直接引く。
-function scaleDegreeSemitone(scale,degree){
-  if(!scale)return degree*2; // 検出できなかった時の保険:全音刻み
-  const n=scale.intervals.length,idx=((degree%n)+n)%n,octave=Math.floor(degree/n);
-  return scale.intervals[idx]+octave*12;
-}
-// 未スライスの元ファイル(mono)を開始位置から連続的に読み進めながら移調する。
-// ピッチを大きく下げるほど再生速度そのものが遅くなる(半音下げ=読み進む速さが遅くなる、
-// 単純なリサンプリング)ため、例えば-48半音(0.0625倍速)まで下げれば、1小節(2秒前後)
-// 鳴らしても元ファイルはほんの0.1秒程度しか消費しない。母音の場所を探して切り出す
-// 手間をかけずとも、勝手にその一音の中に収まって自然な伸びになる。
-// 読み切ったら元ファイルの先頭へ折り返す(無音を挟まない)。
-function renderPitchedSpan(out,src,dest,startSample,target,semitone,gain){
-  if(target<=0||src.length<2)return;
-  const attack=Math.min(64,Math.max(12,Math.floor(target*.02)));
-  const release=Math.min(Math.floor(target*.22),Math.max(96,Math.floor(target*.12)));
-  const ratio=Math.pow(2,semitone/12);
-  let phase=0;
-  for(let i=0;i<target&&dest+i<out.length;i++){
-    const pos=(startSample+phase)%src.length;
-    const p0=Math.floor(pos),p1=(p0+1)%src.length,frac=pos-p0;
-    const sample=src[p0]*(1-frac)+src[p1]*frac;
+// 「1音ずつ歌わせる」のはやめて、自然な発音のひとまとまり(フレーズ)を切ったり
+// 弄ったりせず丸ごと使い、8小節ぶんの尺に合うまでただ引き伸ばす(=スロー再生)。
+// ピッチは自然に下がる(単純なリサンプリングの副作用だが、これも狙い通り)。
+// 度数の補正やスライスの頭出しなど、精度を求める仕組みは一切要らない。
+// voicedなスライスの中から適当に1つを開始位置の目安にし、そこから数秒ぶん
+// (フレーズ1つぶんの目安、1.4〜3.0秒)を、mono(未スライスの元ファイル)から
+// そのまま切り出して種にする。読み切ったら元ファイルの先頭へ折り返す。
+function renderStretchedPhrase(mono,sr,total,startSample,gain,rng){
+  const out=new Float32Array(total);
+  const captureLen=Math.min(mono.length,Math.floor(sr*(1.4+rng()*1.6)));
+  if(total<=0||captureLen<=0)return out;
+  const rate=captureLen/total; // targetサンプル後にちょうどcaptureLen読み終わる速さ
+  const attack=Math.min(1024,Math.floor(total*.01)),release=Math.min(1024,Math.floor(total*.01));
+  for(let i=0;i<total;i++){
+    const pos=(startSample+i*rate)%mono.length;
+    const p0=Math.floor(pos),p1=(p0+1)%mono.length,frac=pos-p0;
+    const sample=mono[p0]*(1-frac)+mono[p1]*frac;
     let env=1;
     if(i<attack)env=i/attack;
-    if(i>target-release)env=Math.min(env,Math.max(0,(target-i)/release));
-    out[dest+i]+=sample*gain*env;
-    phase+=ratio;
-  }
-}
-// 旋律の形(度数の並び)。0=ルート。八卦盤の上下を振り切った時に歌わせる骨格をいくつか用意。
-// 直線的な音階の上り下りではなく、実際の節(メロディの輪郭)にする。
-const CHAOS_MELODY_SHAPES=[
-  [0,3,2,1,0,2,4],
-  [0,2,4,3,1,2,0],
-  [0,4,2,5,3,1,0],
-  [2,0,3,1,4,0,2],
-];
-// 素材を検出したスケールに沿って「歌わせる」。1小節に1音、声・音程が乗っている
-// スライス(voicedRatio高め)の中から「元々長く鳴っている(=既に伸ばした発音に近い)」
-// ものを優先して使う。短い断片を無理に引き延ばすより、素材の中に実在する長い発音
-// (伸ばした語尾、長めの単語など)をそのまま使うほうが自然に決まっている。
-// スライス自身が持つピッチクラスから目標の度数への最短補正(-6〜+5半音)をかけ、
-// レジスターの違いはoctaveShiftで足す。
-function renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,scale,shape,octaveShift,rng){
-  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
-  const minLen=Math.floor(sr*.12);
-  const voiced=sourceSlices.filter(s=>s.length>minLen&&s.voicedRatio>=.4).sort((a,b)=>b.length-a.length);
-  const pool=voiced.length?voiced:sourceSlices.filter(s=>s.length>minLen).sort((a,b)=>b.length-a.length);
-  if(!pool.length)return out;
-  const root=scale?scale.root:0;
-  for(let b=0;b<bars;b++){
-    const base=Math.floor(b*bar),len=Math.min(total-base,Math.floor(bar*.94));
-    if(len<=0)continue;
-    const sl=pool[b%pool.length],degree=shape[b%shape.length];
-    const targetClass=((root+scaleDegreeSemitone(scale,degree))%12+12)%12;
-    let correction=0;
-    if(typeof sl.pitchClass==="number"&&sl.pitchClass>=0){
-      correction=((targetClass-sl.pitchClass+18)%12)-6; // 素材自身の音程から最短で寄せる
-    }
-    renderPitchedSpan(out,mono,base,sl.start,len,correction+octaveShift,.85+rng()*.1);
+    if(i>total-release)env=Math.min(env,Math.max(0,(total-i)/release));
+    out[i]=sample*gain*env;
   }
   return out;
 }
