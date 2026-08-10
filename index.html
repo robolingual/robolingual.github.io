@@ -3034,21 +3034,30 @@ function scaleDegreeSemitone(scale,degree){
   const n=scale.intervals.length,idx=((degree%n)+n)%n,octave=Math.floor(degree/n);
   return scale.intervals[idx]+octave*12;
 }
-// 検出済みスライスの境界には縛られず、未スライスの元ファイル(mono)を開始位置から
-// そのまま連続的に読み進めながら移調する。スライス単体をループさせると、素材が
-// 短いほど継ぎ目が目立って「カチャカチャ」した繰り返しになっていたため、短い断片を
-// 引き延ばすのではなく、元ファイルの続きを実際に読み進めて本物の伸びを作る。
-// 読み切ったら元ファイルの先頭へ折り返す(無音を挟まない)。
-function renderPitchedSpan(out,src,dest,startSample,target,semitone,gain){
-  if(target<=0||src.length<2)return;
+// 声の乗ってるスライスの中から、母音の芯(先頭の子音/アタックを避けた短い一区間、
+// 上限0.26秒)だけを種として選び、それを短くクロスフェードしながらループして
+// 1小節ぶん伸ばす。長い区間をそのまま読むと素材の文章を早口で読み上げただけに
+// なり(「歌」ではなく「セリフ」)、逆にスライス全体をそのままループすると
+// 継ぎ目が目立つ。「短い母音を長く伸ばして歌う」感触は、種を短く選んでから
+// なめらかにループする、この2段構えでしか出ない。素材は必ずmono(未スライスの
+// 元ファイル)から実際に読む。
+function renderSustainedVowel(out,src,dest,sl,target,semitone,gain,sr){
+  if(target<=0||sl.length<4)return;
+  const seedLen=Math.max(1,Math.min(Math.floor(sr*.26),Math.max(Math.floor(sr*.05),Math.floor(sl.length*.5))));
+  const seedStart=Math.max(sl.start,Math.min(sl.end-seedLen,sl.start+Math.floor(sl.length*.25)));
+  const xfade=Math.max(1,Math.floor(seedLen*.35));
   const attack=Math.min(64,Math.max(12,Math.floor(target*.02)));
   const release=Math.min(Math.floor(target*.22),Math.max(96,Math.floor(target*.12)));
   const ratio=Math.pow(2,semitone/12);
+  const read=pos=>{const p0=Math.floor(pos),p1=Math.min(src.length-1,p0+1),frac=pos-p0;return src[p0]*(1-frac)+src[p1]*frac};
   let phase=0;
   for(let i=0;i<target&&dest+i<out.length;i++){
-    const pos=(startSample+phase)%src.length;
-    const p0=Math.floor(pos),p1=(p0+1)%src.length,frac=pos-p0;
-    const sample=src[p0]*(1-frac)+src[p1]*frac;
+    const cyclePos=phase%seedLen;
+    let sample=read(seedStart+cyclePos);
+    if(cyclePos>=seedLen-xfade){
+      const w=(cyclePos-(seedLen-xfade))/xfade,headSample=read(seedStart+(cyclePos-(seedLen-xfade)));
+      sample=sample*(1-w)+headSample*w;
+    }
     let env=1;
     if(i<attack)env=i/attack;
     if(i>target-release)env=Math.min(env,Math.max(0,(target-i)/release));
@@ -3064,11 +3073,10 @@ const CHAOS_MELODY_SHAPES=[
   [0,4,2,5,3,1,0],
   [2,0,3,1,4,0,2],
 ];
-// 素材を検出したスケールに沿って「歌わせる」。1小節に1音。スライス(既に声・音程が
-// 乗っているvoicedRatio高めのもの)は「どこから読み始めるか(頭出し)」の目安にだけ
-// 使い、実際に読む中身はそのスライスの範囲に縛らず、未スライスの元ファイル(mono)を
-// そのまま連続的に読み進める。スライス自身が持つピッチクラスから目標の度数への
-// 最短補正(-6〜+5半音)をかけ、レジスター(高い声/低い声)の違いはoctaveShiftで足す。
+// 素材を検出したスケールに沿って「歌わせる」。1小節に1音、声・音程が乗っている
+// スライス(voicedRatio高め)から母音の芯を選んで伸ばす。スライス自身が持つ
+// ピッチクラスから目標の度数への最短補正(-6〜+5半音)をかけ、レジスター
+// (高い声/低い声)の違いはoctaveShiftで足す。
 function renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,scale,shape,octaveShift,rng){
   const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
   const minLen=Math.floor(sr*.12);
@@ -3085,7 +3093,7 @@ function renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,scale,shape,octav
     if(typeof sl.pitchClass==="number"&&sl.pitchClass>=0){
       correction=((targetClass-sl.pitchClass+18)%12)-6; // 素材自身の音程から最短で寄せる
     }
-    renderPitchedSpan(out,mono,base,sl.start,len,correction+octaveShift,.85+rng()*.1);
+    renderSustainedVowel(out,mono,base,sl,len,correction+octaveShift,.85+rng()*.1,sr);
   }
   return out;
 }
