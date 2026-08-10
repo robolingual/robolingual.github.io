@@ -791,6 +791,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 const sourceInput=document.getElementById("source"),filename=document.getElementById("filename"),wave=document.getElementById("wave"),waveBox=document.getElementById("waveBox"),mainAction=document.getElementById("mainAction"),bpmInput=document.getElementById("bpm"),translateButton=document.getElementById("translate"),status=document.getElementById("waveStatus"),results=document.getElementById("results"),performancePlay=document.getElementById("performancePlay"),performanceStop=document.getElementById("performanceStop"),performanceRec=document.getElementById("performanceRec"),downloadAll=document.getElementById("downloadAll");
 const BARS_PER_LOOP=8; // ループは常に8小節固定(4/8切り替えは廃止)
 let sourceBuffer=null,audioContext=null,mono=null,attacks=[],soundLogoBuffer=null,renderedSoundLogo=null;
+let renderedChaosMelodyUp=null,renderedChaosMelodyDown=null; // 八卦盤の上下を振り切った時に歌う旋律。TRANSLATE1回につき1度だけ作る。
 const objectURLs=[];
 const rendered={ninja:{a:null,b:null,c:null,d:null},killer:{a:null,b:null,c:null,d:null},banker:{a:null,b:null,c:null,d:null},witch:{a:null,b:null,c:null,d:null}};
 let mixerSources=[],mixerGains={},mixerRunning=false,mixerMaster=null;
@@ -1285,6 +1286,14 @@ async function runTranslate(){
     detectedScale=estimateScale(pitchTrack);
     for(const sl of sourceSlices)tagSliceWithPitch(sl,pitchTrack,detectedScale);
     updateExInterval(detectedScale);
+    // 八卦盤の上下(SOCIETY=ハイパス/TOKIO=ローパス)を振り切った時に鳴る、素材自身の歌。
+    // ここで1度だけ作っておき、鳴らすかどうか・混ざり量は八卦盤側でその場で決める。
+    {
+      const melodyRng=mulberry32(cryptoSeed());
+      const shapeUp=pick(CHAOS_MELODY_SHAPES,melodyRng),shapeDown=pick(CHAOS_MELODY_SHAPES,melodyRng);
+      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,7,melodyRng),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-12,melodyRng),sr);
+    }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
       ["ninja","b","Ninja",1,makeNinjaB,variantPools.b],
@@ -1932,6 +1941,25 @@ async function startMixer(){
     logoSource.start(when);
     mixerSources.push(logoSource);
     mixerGains.soundLogo=logoGain;
+  }
+  // 八卦盤の上下を振り切った時に歌う旋律。常時ループ再生しておき、聴こえるかどうかは
+  // getChaosBus()側のsocietyMelodyGain/tokioMelodyGainが盤の位置に応じて開閉する。
+  getChaosBus();
+  if(renderedChaosMelodyUp&&chaosNodes){
+    const src=ctx.createBufferSource();
+    src.buffer=renderedChaosMelodyUp;src.loop=true;src.loopStart=0;src.loopEnd=renderedChaosMelodyUp.duration;
+    src.playbackRate.setValueAtTime(masterRate,when);
+    src.connect(chaosNodes.societyMelodyGain);
+    src.start(when);
+    mixerSources.push(src);
+  }
+  if(renderedChaosMelodyDown&&chaosNodes){
+    const src=ctx.createBufferSource();
+    src.buffer=renderedChaosMelodyDown;src.loop=true;src.loopStart=0;src.loopEnd=renderedChaosMelodyDown.duration;
+    src.playbackRate.setValueAtTime(masterRate,when);
+    src.connect(chaosNodes.tokioMelodyGain);
+    src.start(when);
+    mixerSources.push(src);
   }
   mixerRunning=true;
   document.getElementById("hardRestart").disabled=false;
@@ -2994,6 +3022,59 @@ function scaleSemitoneLadder(scale,rise){
 function scaleStepSemitone(scale,index){
   const ladder=scaleSemitoneLadder(scale,true);
   return ladder[((index%ladder.length)+ladder.length)%ladder.length];
+}
+// 度数(0=ルート、1=2番目の音…スケールの音数を超えたら1オクターブ上へ)を半音へ変換する。
+// scaleStepSemitoneは連続的な滑り用の圧縮ラダーなので、ドレミの「何番目の音か」を
+// そのまま踏みたい歌メロには使えない。ここではscale.intervalsを直接引く。
+function scaleDegreeSemitone(scale,degree){
+  if(!scale)return degree*2; // 検出できなかった時の保険:全音刻み
+  const n=scale.intervals.length,idx=((degree%n)+n)%n,octave=Math.floor(degree/n);
+  return scale.intervals[idx]+octave*12;
+}
+// スライスを固定の半音ぶんだけ移調して、目標の長さぶん敷き詰める(足りなければ末尾をループ)。
+// renderPitchRise/Fallと同じ考え方だが、滑らかに動かず一定のピッチで止める版。
+function renderPitchedNote(out,src,dest,sl,target,semitone,gain){
+  if(target<=0||sl.length<2)return;
+  const attack=Math.min(64,Math.max(12,Math.floor(target*.02)));
+  const release=Math.min(Math.floor(target*.22),Math.max(96,Math.floor(target*.12)));
+  const loopStart=sl.start+Math.floor(sl.length*.35),loopLength=Math.max(2,sl.end-loopStart);
+  const ratio=Math.pow(2,semitone/12);
+  let phase=0;
+  for(let i=0;i<target&&dest+i<out.length;i++){
+    const pos=phase<sl.length-1?sl.start+phase:loopStart+((phase-(sl.length-1))%loopLength);
+    const p0=Math.floor(pos),p1=Math.min(src.length-1,p0+1),frac=pos-p0;
+    const sample=src[p0]*(1-frac)+src[p1]*frac;
+    let env=1;
+    if(i<attack)env=i/attack;
+    if(i>target-release)env=Math.min(env,Math.max(0,(target-i)/release));
+    out[dest+i]+=sample*gain*env;
+    phase+=ratio;
+  }
+}
+// 旋律の形(度数の並び)。0=ルート。八卦盤の上下を振り切った時に歌わせる骨格をいくつか用意。
+// 直線的な音階の上り下りではなく、実際の節(メロディの輪郭)にする。
+const CHAOS_MELODY_SHAPES=[
+  [0,3,2,1,0,2,4],
+  [0,2,4,3,1,2,0],
+  [0,4,2,5,3,1,0],
+  [2,0,3,1,4,0,2],
+];
+// 素材を検出したスケールに沿って「歌わせる」。1小節に1音、頭から並べたスライスへ
+// 度数どおりのピッチを当てる。全部違う音である必要はなく、スキャットのように
+// 同じスライスを使い回してもいい(スライスがbars本に満たなければ頭から循環する)。
+function renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,scale,shape,octaveShift,rng){
+  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
+  const ordered=sourceSlices.filter(s=>s.length>Math.floor(sr*.05)).sort((a,b)=>a.start-b.start);
+  const pool=ordered.length?ordered:sourceSlices;
+  if(!pool.length)return out;
+  for(let b=0;b<bars;b++){
+    const base=Math.floor(b*bar),len=Math.min(total-base,Math.floor(bar*.94));
+    if(len<=0)continue;
+    const sl=pool[b%pool.length],degree=shape[b%shape.length];
+    const semitone=scaleDegreeSemitone(scale,degree)+octaveShift;
+    renderPitchedNote(out,mono,base,sl,len,semitone,.85+rng()*.1);
+  }
+  return out;
 }
 // 音階の度数を指定してスライスを選ぶ。無ければ「ピッチのある別の度数」、それも無ければ通常選択。
 function pickSliceByDegree(slices,rng,degree){
@@ -4089,17 +4170,16 @@ function getChaosBus(){
   const grainDry=ctx.createGain();grainDry.gain.value=0;
   postGranular.connect(grainDry).connect(chaosOut);
 
-  // ---- SOCIETY: 金属的インダストリアル、低域固くブースト+中音の声を前に ----
-  // (v0.9.33: 歪み量を抑え、歪み後にローパスでフィズを削り、共振ブーストを穏やかにし、
-  //  コンプレッサーで暴れを抑えて「痛い」ではなく「重くて硬い」方向に寄せた)
-  const societySend=ctx.createGain();societySend.gain.value=0;
-  const societyLowPre=ctx.createBiquadFilter();societyLowPre.type="peaking";societyLowPre.frequency.value=85;societyLowPre.Q.value=2.2;societyLowPre.gain.value=9;
-  const societyShaper=ctx.createWaveShaper();societyShaper.curve=chaosDistCurve(3.2);
-  const societyDeFizz=ctx.createBiquadFilter();societyDeFizz.type="lowpass";societyDeFizz.frequency.value=5200;societyDeFizz.Q.value=.7;
-  const societyPresence=ctx.createBiquadFilter();societyPresence.type="peaking";societyPresence.frequency.value=2200;societyPresence.Q.value=.9;societyPresence.gain.value=4;
-  const societyComp=ctx.createDynamicsCompressor();societyComp.threshold.value=-18;societyComp.ratio.value=4;societyComp.attack.value=.003;societyComp.release.value=.15;
-  const societyOut=ctx.createGain();societyOut.gain.value=.85;
-  postGranular.connect(societySend).connect(societyLowPre).connect(societyShaper).connect(societyDeFizz).connect(societyPresence).connect(societyComp).connect(societyOut).connect(chaosOut);
+  // ---- SOCIETY(上=ハイパス): DJのフィルターノブと同じ、生音を素通しで濾す方向 ----
+  // 粒(postGranular)ではなくchaosBusの生音を直接タップする。振り切って痩せていく代わりに、
+  // 素材自身を検出スケールで歌わせた旋律(renderedChaosMelodyUp)を同じフィルター越しに混ぜる。
+  const societySend=ctx.createGain();societySend.gain.value=0; // 開閉はchaosUpdateの共通ループが担当
+  const societyHP=ctx.createBiquadFilter();societyHP.type="highpass";societyHP.frequency.value=20;societyHP.Q.value=.8;
+  const societyMelodyGain=ctx.createGain();societyMelodyGain.gain.value=0; // しっかり振り切った時だけ上がる
+  const societyOut=ctx.createGain();societyOut.gain.value=.9;
+  chaosBus.connect(societySend).connect(societyHP);
+  societyMelodyGain.connect(societyHP);
+  societyHP.connect(societyOut).connect(chaosOut);
 
   // ---- PARAISO: ピッチ上げ、ディレイ+長く煌めくリバーブ、終わらない安らぎ ----
   const paraisoSend=ctx.createGain();paraisoSend.gain.value=0;
@@ -4112,18 +4192,14 @@ function getChaosBus(){
   paraisoHP.connect(paraisoDelay);paraisoHP.connect(paraisoConv);
   paraisoDelay.connect(paraisoOut);paraisoConv.connect(paraisoOut);paraisoOut.connect(chaosOut);
 
-  // ---- TOKIO: グリッチ/ボコーダーみ、キラキラ未来 ----
+  // ---- TOKIO(下=ローパス): SOCIETYと対の、こもっていく方向 ----
   const tokioSend=ctx.createGain();tokioSend.gain.value=0;
-  const tokioBP=ctx.createBiquadFilter();tokioBP.type="bandpass";tokioBP.frequency.value=1800;tokioBP.Q.value=4;
-  const tokioLFO=ctx.createOscillator();tokioLFO.frequency.value=5.5;
-  const tokioLFOGain=ctx.createGain();tokioLFOGain.gain.value=900;
-  tokioLFO.connect(tokioLFOGain).connect(tokioBP.frequency);tokioLFO.start();
-  const tokioChorus=chaosChorus(ctx,{voices:3,baseDelay:.006,depth:.0025,rate:6});
-  const tokioShelf=ctx.createBiquadFilter();tokioShelf.type="highshelf";tokioShelf.frequency.value=4000;tokioShelf.gain.value=7;
-  const tokioOut=ctx.createGain();tokioOut.gain.value=.7;
-  postGranular.connect(tokioSend);
-  tokioSend.connect(tokioBP).connect(tokioShelf);tokioSend.connect(tokioChorus.input);tokioChorus.output.connect(tokioShelf);
-  tokioShelf.connect(tokioOut).connect(chaosOut);
+  const tokioLP=ctx.createBiquadFilter();tokioLP.type="lowpass";tokioLP.frequency.value=18000;tokioLP.Q.value=.8;
+  const tokioMelodyGain=ctx.createGain();tokioMelodyGain.gain.value=0;
+  const tokioOut=ctx.createGain();tokioOut.gain.value=.9;
+  chaosBus.connect(tokioSend).connect(tokioLP);
+  tokioMelodyGain.connect(tokioLP);
+  tokioLP.connect(tokioOut).connect(chaosOut);
 
   // ---- ZION: 荘厳、パイプオルガン的持続、コーラス+超ロングリバーブ ----
   const zionSend=ctx.createGain();zionSend.gain.value=0;
@@ -4174,6 +4250,7 @@ function getChaosBus(){
     sends:{society:societySend,paraiso:paraisoSend,tokio:tokioSend,zion:zionSend},
     hellSends:{water:waterSend,fire:fireSend,slicer:slicerSend,filter:filterSend},
     slicerGate,
+    societyHP,tokioLP,societyMelodyGain,tokioMelodyGain,
   };
   return chaosBus;
 }
@@ -4331,6 +4408,15 @@ function chaosUpdate(x,y){
     chaosNodes.dryGain.gain.setTargetAtTime(1-radius,t,.05);
     chaosNodes.grainDry.gain.setTargetAtTime(radius*.55,t,.05);
     for(const d of CHAOS_DIRS)chaosNodes.sends[d].gain.setTargetAtTime(weights[d]*radius,t,.05);
+    // SOCIETY(上)/TOKIO(下)は開閉ぶんに応じてフィルターそのものも動かす。
+    // カットオフが動くことでDJのフィルターノブのような「開く/閉じる」感触が出る。
+    const societyAmt=weights.society*radius,tokioAmt=weights.tokio*radius;
+    chaosNodes.societyHP.frequency.setTargetAtTime(20+Math.pow(societyAmt,1.6)*4500,t,.05);
+    chaosNodes.tokioLP.frequency.setTargetAtTime(18000-Math.pow(tokioAmt,1.6)*17200,t,.05);
+    // しっかり振り切った(0.85超)所だけ、素材自身の歌をその場のフィルター越しに出す。
+    const CHAOS_MELODY_GATE=.85;
+    chaosNodes.societyMelodyGain.gain.setTargetAtTime(societyAmt>CHAOS_MELODY_GATE?1:0,t,.08);
+    chaosNodes.tokioMelodyGain.gain.setTargetAtTime(tokioAmt>CHAOS_MELODY_GATE?1:0,t,.08);
   }
   const radiusExcess=Math.max(0,(radius-.6)/.4);
   let activeLabel="-",activeColor=null,maxHell=0;
