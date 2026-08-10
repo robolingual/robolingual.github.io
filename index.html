@@ -1291,9 +1291,11 @@ async function runTranslate(){
     {
       const melodyRng=mulberry32(cryptoSeed());
       const shapeUp=pick(CHAOS_MELODY_SHAPES,melodyRng),shapeDown=pick(CHAOS_MELODY_SHAPES,melodyRng);
-      // 「歌に聞こえない」の指摘を受け、両レジスターを1オクターブ下げた(+7→-5、-12→-24)。
-      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,-5,melodyRng),sr);
-      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-24,melodyRng),sr);
+      // オクターブ下げ(-12)ではなく5度下げ(-7)にした。intervals=7(完全5度)は
+      // SCALE_TEMPLATES全種に共通で含まれるため、度数の補正(correction)がどんな
+      // スケールでも必ずそのままスケール内の音になる(+7→0、-12→-19)。
+      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,0,melodyRng),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-19,melodyRng),sr);
     }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
