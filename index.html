@@ -2752,6 +2752,16 @@ function highPassInPlace(data,start,len,sr,cutoffHz){
     data[i]=y;prevIn=x;prevOut=y;
   }
 }
+function lowPassInPlace(data,start,len,sr,cutoffHz){
+  // 粒を継いだ跡に乗る耳障りな高域(モスキート音)を削る簡易ローパス。
+  const rc=1/(2*Math.PI*cutoffHz),dt=1/sr,alpha=dt/(rc+dt);
+  const end=Math.min(data.length,start+len);
+  let prevOut=data[start]||0;
+  for(let i=start;i<end;i++){
+    const y=prevOut+alpha*(data[i]-prevOut);
+    data[i]=y;prevOut=y;
+  }
+}
 function hardClipInPlace(data,start,len,drive){
   // BOSS系ペダルを意識した金属的なハードクリップ・ディストーション。driveが高いほど歪みが強い。
   const end=Math.min(data.length,start+len);
@@ -3072,6 +3082,10 @@ function renderTimeStretchedPhrase(mono,sr,total,startSample,gain,rng){
     outPos+=outHop;
     srcPosIdeal+=srcHopIdeal;
   }
+  // 粒の継ぎ目にWSOLAでも消しきれない高域が薄く残ることがあり、モスキート音として
+  // 耳につく。1段(-6dB/oct)だけでは効きが弱いので3段重ねて急峻にする(-18dB/oct)。
+  // 声の存在感に要らない帯域なので、削ってもキャラクターは失わない。
+  for(let pass=0;pass<3;pass++)lowPassInPlace(out,0,out.length,sr,6000);
   const fade=Math.min(1024,Math.floor(total*.01));
   for(let i=0;i<fade;i++){out[i]*=i/fade;out[total-1-i]*=i/fade}
   return out;
