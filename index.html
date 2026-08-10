@@ -4109,6 +4109,9 @@ const chaosPadEl=document.getElementById("chaosPad"),chaosDot=document.getElemen
 
 const CHAOS_DIRS=["society","paraiso","tokio","zion"];
 const CHAOS_DIR_ANGLE={society:0,paraiso:90,tokio:180,zion:270}; // compass: 上/右/下/左
+// 盤の絵に描かれた内側の線(トライグラムの内側)の半径(目測、中心0〜縁1)。
+// SOCIETY/TOKIOのフィルターはここで全開に達し、ここから縁までが「歌の音量」ゾーン。
+const CHAOS_FILTER_MAX_RADIUS=.35;
 
 const CHAOS_GRAIN_PARAMS={
   society:{size:.08, rate:.85, jitter:.35, density:16, wobble:.03},
@@ -4430,13 +4433,15 @@ function chaosUpdate(x,y){
     for(const d of CHAOS_DIRS)chaosNodes.sends[d].gain.setTargetAtTime(weights[d]*radius,t,.05);
     // SOCIETY(上)/TOKIO(下)は開閉ぶんに応じてフィルターそのものも動かす。
     // カットオフが動くことでDJのフィルターノブのような「開く/閉じる」感触が出る。
+    // 通常のフィルターはCHAOS_FILTER_MAX_RADIUS(盤の絵に描かれた内側の線)で全開に達し、
+    // そこから盤の縁までは「歌の音量」ゾーンとして、旋律が徐々に混ざり始める。
     const societyAmt=weights.society*radius,tokioAmt=weights.tokio*radius;
-    chaosNodes.societyHP.frequency.setTargetAtTime(20+Math.pow(societyAmt,1.6)*4500,t,.05);
-    chaosNodes.tokioLP.frequency.setTargetAtTime(18000-Math.pow(tokioAmt,1.6)*17200,t,.05);
-    // しっかり振り切った(0.85超)所だけ、素材自身の歌をその場のフィルター越しに出す。
-    const CHAOS_MELODY_GATE=.85;
-    chaosNodes.societyMelodyGain.gain.setTargetAtTime(societyAmt>CHAOS_MELODY_GATE?1:0,t,.08);
-    chaosNodes.tokioMelodyGain.gain.setTargetAtTime(tokioAmt>CHAOS_MELODY_GATE?1:0,t,.08);
+    const societySweep=Math.min(1,societyAmt/CHAOS_FILTER_MAX_RADIUS),tokioSweep=Math.min(1,tokioAmt/CHAOS_FILTER_MAX_RADIUS);
+    chaosNodes.societyHP.frequency.setTargetAtTime(20+Math.pow(societySweep,1.4)*4500,t,.05);
+    chaosNodes.tokioLP.frequency.setTargetAtTime(18000-Math.pow(tokioSweep,1.4)*17200,t,.05);
+    const melodyFade=amt=>Math.max(0,Math.min(1,(amt-CHAOS_FILTER_MAX_RADIUS)/(1-CHAOS_FILTER_MAX_RADIUS)));
+    chaosNodes.societyMelodyGain.gain.setTargetAtTime(melodyFade(societyAmt),t,.08);
+    chaosNodes.tokioMelodyGain.gain.setTargetAtTime(melodyFade(tokioAmt),t,.08);
   }
   const radiusExcess=Math.max(0,(radius-.6)/.4);
   let activeLabel="-",activeColor=null,maxHell=0;
