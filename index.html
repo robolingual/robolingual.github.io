@@ -1291,8 +1291,9 @@ async function runTranslate(){
     {
       const melodyRng=mulberry32(cryptoSeed());
       const shapeUp=pick(CHAOS_MELODY_SHAPES,melodyRng),shapeDown=pick(CHAOS_MELODY_SHAPES,melodyRng);
-      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,7,melodyRng),sr);
-      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-12,melodyRng),sr);
+      // 「歌に聞こえない」の指摘を受け、両レジスターを1オクターブ下げた(+7→-5、-12→-24)。
+      renderedChaosMelodyUp=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeUp,-5,melodyRng),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderScaleMelody(sourceSlices,mono,sr,bpm,bars,total,detectedScale,shapeDown,-24,melodyRng),sr);
     }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
@@ -4442,6 +4443,17 @@ function chaosUpdate(x,y){
     const melodyFade=amt=>Math.max(0,Math.min(1,(amt-CHAOS_FILTER_MAX_RADIUS)/(1-CHAOS_FILTER_MAX_RADIUS)));
     chaosNodes.societyMelodyGain.gain.setTargetAtTime(melodyFade(societyAmt),t,.08);
     chaosNodes.tokioMelodyGain.gain.setTargetAtTime(melodyFade(tokioAmt),t,.08);
+    // 線を超えたら、それまで鳴っていたフィルター済みの音も少しずつミュートへ向かう。
+    // 線までは普通に育つが、線を超えたらそこで足止め(値を固定)。超えて3割(t<=.3)までは
+    // その固定値のまま変化なし、そこから縁まで同じ割合で減衰し、縁では歌だけになる。
+    const lineSend=amt=>{
+      const frozen=Math.min(amt,CHAOS_FILTER_MAX_RADIUS);
+      const tt=melodyFade(amt); // 線=0、縁=1の位置
+      const decay=tt<=.3?1:Math.max(0,1-(tt-.3)/.7);
+      return frozen*decay;
+    };
+    chaosNodes.sends.society.gain.setTargetAtTime(lineSend(societyAmt),t,.05);
+    chaosNodes.sends.tokio.gain.setTargetAtTime(lineSend(tokioAmt),t,.05);
   }
   const radiusExcess=Math.max(0,(radius-.6)/.4);
   let activeLabel="-",activeColor=null,maxHell=0;
