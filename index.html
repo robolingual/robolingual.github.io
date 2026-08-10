@@ -1288,8 +1288,8 @@ async function runTranslate(){
     updateExInterval(detectedScale);
     // 八卦盤の上下(SOCIETY=ハイパス/TOKIO=ローパス)を振り切った時に鳴る、素材そのもの。
     // ここで1度だけ作っておき、鳴らすかどうか・混ざり量は八卦盤側でその場で決める。
-    // 「歌わせる」のはやめて、1〜2小節ぶんを切らず弄らず採り、2倍か4倍に伸ばして
-    // 8小節の枠へ繰り返し敷き詰めるだけにした(renderStretchedLoop参照)。
+    // 「歌わせる」のはやめて、2小節ぶんを切らず弄らず採り、4倍に伸ばして
+    // 8小節ちょうどにするだけにした(renderStretchedLoop参照)。
     {
       const melodyRng=mulberry32(cryptoSeed());
       const minVoicedLen=Math.floor(sr*.12);
@@ -1297,8 +1297,8 @@ async function runTranslate(){
       const anchors=(voiced.length?voiced:sourceSlices).slice(0,Math.max(1,Math.ceil((voiced.length||sourceSlices.length)*.5)));
       const startUp=anchors[Math.floor(melodyRng()*anchors.length)].start;
       const startDown=anchors[Math.floor(melodyRng()*anchors.length)].start;
-      renderedChaosMelodyUp=toAudioBuffer(renderStretchedLoop(mono,sr,bpm,total,startUp,.9,melodyRng),sr);
-      renderedChaosMelodyDown=toAudioBuffer(renderStretchedLoop(mono,sr,bpm,total,startDown,.9,melodyRng),sr);
+      renderedChaosMelodyUp=toAudioBuffer(renderStretchedLoop(mono,sr,bpm,total,startUp,.9),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderStretchedLoop(mono,sr,bpm,total,startDown,.9),sr);
     }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
@@ -3094,28 +3094,23 @@ function renderTimeStretchedPhrase(mono,sr,total,startSample,captureLen,gain){
   for(let pass=0;pass<2;pass++)lowPassInPlace(out,0,out.length,sr,8000);
   return out;
 }
-// 採取するのは1〜2小節、伸ばすのは2倍か4倍。出来上がる2〜8小節の区間を、
-// 8小節の枠へ繰り返し敷き詰める(=ループ)。
+// 採取するのは2小節、伸ばすのは4倍。2小節×4倍でちょうど8小節になるので、
+// 途中で繰り返さず、8小節を一息で埋める。
 //
-// 以前は「1.4〜3.0秒を採って8小節ぶんに一息で伸ばす」形だったが、それだと
-// BPM110で5.8〜12.5倍、BPM60では最大22.9倍という無茶な倍率になっていた。
-// 8倍だと元素材は実時間の12%しか進まず、ほぼ同じ0.05秒を延々と貼り直すだけに
-// なるので、粒をどう継いでも直らない。倍率を2〜4倍に収めれば普通に成立する。
-// 尺をBPMから逆算するので、テンポを変えても倍率は変わらない。
-function renderStretchedLoop(mono,sr,bpm,total,startSample,gain,rng){
+// 以前は「1.4〜3.0秒を採って8小節ぶんに伸ばす」形で、実際の倍率はBPM110で
+// 5.8〜12.5倍、BPM60では最大22.9倍だった。8倍にもなると元素材は実時間の12%しか
+// 進まず、ほぼ同じ0.05秒を延々と貼り直すだけになるので、粒の長さをどう調整しても
+// 直らない。採取を尺から逆算して4倍に固定すれば、テンポを変えても倍率は変わらない。
+function renderStretchedLoop(mono,sr,bpm,total,startSample,gain){
   const barLen=Math.max(1,Math.floor(sr*60/bpm*4));
-  const captureBars=rng()<.5?1:2,stretchFactor=rng()<.5?2:4;
-  const captureLen=Math.max(1,Math.min(mono.length,captureBars*barLen));
-  const segLen=Math.max(1,Math.min(total,captureLen*stretchFactor));
-  // 区間の尻を頭へ短く重ねて、繰り返しの継ぎ目が鳴らないようにする。
-  // 全体の頭尻をフェードしてしまうと、ループの度に音量が凹むので使わない。
-  const xf=Math.max(1,Math.min(Math.floor(sr*.012),Math.floor(segLen*.1)));
-  const raw=renderTimeStretchedPhrase(mono,sr,segLen+xf,startSample,captureLen,gain);
-  const seg=new Float32Array(segLen);
-  seg.set(raw.subarray(0,segLen));
-  for(let i=0;i<xf;i++){const w=i/xf;seg[i]=seg[i]*w+raw[segLen+i]*(1-w)}
+  const captureLen=Math.max(1,Math.min(mono.length,2*barLen)); // 2小節
+  // 尻を頭へ短く重ねて、8小節ループの折り返しで音が飛ばないようにする。
+  // 頭尻をフェードすると、ループの度に音量が凹むので使わない。
+  const xf=Math.max(1,Math.min(Math.floor(sr*.012),Math.floor(total*.05)));
+  const raw=renderTimeStretchedPhrase(mono,sr,total+xf,startSample,captureLen,gain);
   const out=new Float32Array(total);
-  for(let i=0;i<total;i++)out[i]=seg[i%segLen];
+  out.set(raw.subarray(0,total));
+  for(let i=0;i<xf;i++){const w=i/xf;out[i]=out[i]*w+raw[total+i]*(1-w)}
   return out;
 }
 // 音階の度数を指定してスライスを選ぶ。無ければ「ピッチのある別の度数」、それも無ければ通常選択。
