@@ -4432,7 +4432,6 @@ function chaosUpdate(x,y){
   const weights=chaosWeights(x,y);
   if(chaosNodes){
     chaosNodes.dryGain.gain.setTargetAtTime(1-radius,t,.05);
-    chaosNodes.grainDry.gain.setTargetAtTime(radius*.55,t,.05);
     for(const d of CHAOS_DIRS)chaosNodes.sends[d].gain.setTargetAtTime(weights[d]*radius,t,.05);
     // SOCIETY(上)/TOKIO(下)は開閉ぶんに応じてフィルターそのものも動かす。
     // カットオフが動くことでDJのフィルターノブのような「開く/閉じる」感触が出る。
@@ -4445,6 +4444,11 @@ function chaosUpdate(x,y){
     const melodyFade=amt=>Math.max(0,Math.min(1,(amt-CHAOS_FILTER_MAX_RADIUS)/(1-CHAOS_FILTER_MAX_RADIUS)));
     chaosNodes.societyMelodyGain.gain.setTargetAtTime(melodyFade(societyAmt),t,.08);
     chaosNodes.tokioMelodyGain.gain.setTargetAtTime(melodyFade(tokioAmt),t,.08);
+    // grainDry(粒の生っぽさ)は方向を問わず radius だけで開く常時ブリードだったため、
+    // SOCIETY/TOKIOの縁(歌だけのはずのゾーン)でも粒立った原音が薄く漏れ続けていた。
+    // 歌が優勢になった分だけここも一緒にミュートし、縁では本当に歌だけにする。
+    const melodyDominance=Math.max(melodyFade(societyAmt),melodyFade(tokioAmt));
+    chaosNodes.grainDry.gain.setTargetAtTime(radius*.55*(1-melodyDominance),t,.05);
     // 線を超えたら、それまで鳴っていたフィルター済みの音も少しずつミュートへ向かう。
     // 線までは普通に育つが、線を超えたらそこで足止め(値を固定)。超えて3割(t<=.3)までは
     // その固定値のまま変化なし、そこから縁まで同じ割合で減衰し、縁では歌だけになる。
