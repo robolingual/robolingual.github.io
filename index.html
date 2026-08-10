@@ -4513,7 +4513,11 @@ window.addEventListener("pointerup",e=>{
   // HOLDオン：離した場所にそのまま張り付く。currentPos/エンジンは触らずキープ。
 });
 let chaosZeroLocked=false;
-chaosZeroLockBtn.addEventListener("click",()=>{
+// 0 LOCKは「今まさにパッドを押さえてる指の位置をゼロ地点にする」使い方が本来の狙いなので、
+// パッドを別の指(または同じ指を離す前)で押さえたままでも効くようにする。clickだと
+// タッチではpointerup後まで発火せず、離した瞬間にHOLDオフの復帰処理と競合しうるため、
+// HOLD/0 LOCKともpointerdownで即座に処理する(speedラベルと同じ考え方)。
+function toggleChaosZeroLock(){
   chaosZeroLocked=!chaosZeroLocked;
   chaosZeroLockBtn.classList.toggle("on",chaosZeroLocked);
   if(chaosZeroLocked){
@@ -4527,8 +4531,8 @@ chaosZeroLockBtn.addEventListener("click",()=>{
   // 今まさに触ってる/HOLDで固定中でなければ、パッド自体も新しいゼロ地点へ即座にスナップさせる。
   // (これが無いと、表示上の値だけ変わって実際の音・ドットは次に触るまで古い位置に残ってしまう)
   if(!chaosDragging&&!chaosHold)chaosGoToZero();
-});
-chaosHoldBtn.addEventListener("click",()=>{
+}
+function toggleChaosHold(){
   chaosHold=!chaosHold;
   chaosHoldBtn.textContent="HOLD: "+(chaosHold?"ON":"OFF")+" (Z)";
   chaosHoldBtn.classList.toggle("on",chaosHold);
@@ -4536,7 +4540,11 @@ chaosHoldBtn.addEventListener("click",()=>{
     // HOLD解除：即座にゼロ地点へ戻す(エンジンの継続/停止判断はchaosGoToZero内で行う)
     chaosGoToZero();
   }
-});
+}
+chaosZeroLockBtn.addEventListener("pointerdown",e=>{e.preventDefault();toggleChaosZeroLock()});
+chaosZeroLockBtn.addEventListener("click",e=>e.preventDefault()); // タッチ後に飛んでくる分を捨てる
+chaosHoldBtn.addEventListener("pointerdown",e=>{e.preventDefault();toggleChaosHold()});
+chaosHoldBtn.addEventListener("click",e=>e.preventDefault());
 // ---- 八卦(バグア)描画：4方向+斜め4地獄=8つの区画に、意味の近い卦を割り当てて緑線で描く ----
 function chaosBarRow(y,broken){
   const ns="http://www.w3.org/2000/svg";
@@ -4595,8 +4603,8 @@ window.addEventListener("keydown",e=>{
   const el=document.activeElement;
   if(el&&(el.tagName==="INPUT"||el.tagName==="TEXTAREA"||el.isContentEditable))return;
   const key=e.key.toLowerCase();
-  if(key==="z"){e.preventDefault();chaosHoldBtn.click()}
-  else if(key==="x"){e.preventDefault();chaosZeroLockBtn.click()}
+  if(key==="z"){e.preventDefault();toggleChaosHold()}
+  else if(key==="x"){e.preventDefault();toggleChaosZeroLock()}
 });
 // ================= /CHAOS PAD =================
 
