@@ -1297,8 +1297,8 @@ async function runTranslate(){
       const anchors=(voiced.length?voiced:sourceSlices).slice(0,Math.max(1,Math.ceil((voiced.length||sourceSlices.length)*.5)));
       const startUp=anchors[Math.floor(melodyRng()*anchors.length)].start;
       const startDown=anchors[Math.floor(melodyRng()*anchors.length)].start;
-      renderedChaosMelodyUp=toAudioBuffer(renderStretchedPhrase(mono,sr,total,startUp,.9,melodyRng),sr);
-      renderedChaosMelodyDown=toAudioBuffer(renderStretchedPhrase(mono,sr,total,startDown,.9,melodyRng),sr);
+      renderedChaosMelodyUp=toAudioBuffer(renderTimeStretchedPhrase(mono,sr,total,startUp,.9,melodyRng),sr);
+      renderedChaosMelodyDown=toAudioBuffer(renderTimeStretchedPhrase(mono,sr,total,startDown,.9,melodyRng),sr);
     }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
@@ -3031,26 +3031,33 @@ function scaleStepSemitone(scale,index){
 }
 // 「1音ずつ歌わせる」のはやめて、自然な発音のひとまとまり(フレーズ)を切ったり
 // 弄ったりせず丸ごと使い、8小節ぶんの尺に合うまでただ引き伸ばす(=スロー再生)。
-// ピッチは自然に下がる(単純なリサンプリングの副作用だが、これも狙い通り)。
-// 度数の補正やスライスの頭出しなど、精度を求める仕組みは一切要らない。
-// voicedなスライスの中から適当に1つを開始位置の目安にし、そこから数秒ぶん
-// (フレーズ1つぶんの目安、1.4〜3.0秒)を、mono(未スライスの元ファイル)から
-// そのまま切り出して種にする。読み切ったら元ファイルの先頭へ折り返す。
-function renderStretchedPhrase(mono,sr,total,startSample,gain,rng){
+// ただし単純なリサンプリングだと再生速度を落とすぶんピッチも一緒に下がってしまう
+// (直前まではそれが対策だったが、今回はマスターピッチ的に音程を保ったまま伸ばしたい)。
+// そこで簡易オーバーラップアド式のタイムストレッチにする: 短い粒(60ms、Hann窓)を
+// 一定間隔で出力に重ねて敷き詰めつつ、粒を拾う元の位置はその分だけゆっくり進める。
+// 粒自体は元の音をそのまま(リサンプリングせず)使うので、ピッチは変わらない。
+function renderTimeStretchedPhrase(mono,sr,total,startSample,gain,rng){
   const out=new Float32Array(total);
   const captureLen=Math.min(mono.length,Math.floor(sr*(1.4+rng()*1.6)));
   if(total<=0||captureLen<=0)return out;
-  const rate=captureLen/total; // targetサンプル後にちょうどcaptureLen読み終わる速さ
-  const attack=Math.min(1024,Math.floor(total*.01)),release=Math.min(1024,Math.floor(total*.01));
-  for(let i=0;i<total;i++){
-    const pos=(startSample+i*rate)%mono.length;
-    const p0=Math.floor(pos),p1=(p0+1)%mono.length,frac=pos-p0;
-    const sample=mono[p0]*(1-frac)+mono[p1]*frac;
-    let env=1;
-    if(i<attack)env=i/attack;
-    if(i>total-release)env=Math.min(env,Math.max(0,(total-i)/release));
-    out[i]=sample*gain*env;
+  const stretch=total/captureLen; // 何倍に伸ばすか
+  const grainSize=Math.max(64,Math.floor(sr*.06)),outHop=Math.max(1,Math.floor(grainSize/2)),srcHop=outHop/stretch;
+  const win=new Float32Array(grainSize);
+  for(let i=0;i<grainSize;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(grainSize-1));
+  let outPos=0,srcPos=0;
+  while(outPos<total){
+    for(let i=0;i<grainSize;i++){
+      const o=outPos+i;
+      if(o>=total)break;
+      const s=(startSample+srcPos+i)%mono.length;
+      const p0=Math.floor(s),p1=(p0+1)%mono.length,frac=s-p0;
+      out[o]+=(mono[p0]*(1-frac)+mono[p1]*frac)*win[i]*gain;
+    }
+    outPos+=outHop;
+    srcPos+=srcHop;
   }
+  const fade=Math.min(1024,Math.floor(total*.01));
+  for(let i=0;i<fade;i++){out[i]*=i/fade;out[total-1-i]*=i/fade}
   return out;
 }
 // 音階の度数を指定してスライスを選ぶ。無ければ「ピッチのある別の度数」、それも無ければ通常選択。
