@@ -4197,8 +4197,6 @@ const CHAOS_HELL_PAIRS=[
   {a:"zion",   b:"society",key:"filter",label:"篩の地獄 / ヒエラルキーの亡者"},
 ];
 const CHAOS_HELL_COLOR={water:"#2fae7a",fire:"#c94b3a",slicer:"#3aa7d9",filter:"#c9a13a"};
-// 亡霊ボイスの音量の補正。fire(右下=PARAISO+TOKIO)だけうるさすぎたので2割落とす。
-const CHAOS_GHOST_GAIN={fire:.8};
 
 let chaosBus=null,chaosOut=null,chaosNodes=null;
 let captureBuffer=null,captureData=null,capturePos=0,captureLen=0;
@@ -4336,7 +4334,10 @@ function getChaosBus(){
   const fireDepth=ctx.createGain();fireDepth.gain.value=.5;
   const fireOffset=ctx.createConstantSource();fireOffset.offset.value=.5;
   fireLFO.connect(fireDepth).connect(fireTrem.gain);fireOffset.connect(fireTrem.gain);fireLFO.start();fireOffset.start();
-  const fireOut=ctx.createGain();fireOut.gain.value=.9;
+  // 炎だけ他の隅より突出して大きかった(実測: 平均0.093/ピーク0.634に対し、
+  // 他は平均0.013〜0.058/ピーク0.031〜0.082)。歪みで潰れたぶん密度が上がり、
+  // さらにトレモロで山が立つため。他の隅と並ぶところまで下げる。
+  const fireOut=ctx.createGain();fireOut.gain.value=.34;
   postGranular.connect(fireSend).connect(fireShaper).connect(fireTrem).connect(fireOut).connect(chaosOut);
 
   const slicerSend=ctx.createGain();slicerSend.gain.value=0;
@@ -4447,9 +4448,9 @@ function chaosTriggerGhost(key,amount){
     src.start(now,start);
     g={src,gain,lp,playing:true};chaosGhosts[key]=g;
   }
-  // 右下(炎の地獄)の亡霊だけ耳につくほど大きかったので2割落とす。
-  const scale=CHAOS_GHOST_GAIN[key]||1;
-  g.gain.gain.setTargetAtTime(Math.min(.16,amount*.16)*scale,now,.25);
+  // 亡霊はどの隅も同じ音量。以前ここでfireだけ2割落としていたが、右下がうるさい原因は
+  // 亡霊ではなく炎のエフェクト自体だった(実測で出音のピークが他の隅の8〜20倍)ので戻した。
+  g.gain.gain.setTargetAtTime(Math.min(.16,amount*.16),now,.25);
 }
 function chaosReleaseGhost(key){
   const g=chaosGhosts[key];if(!g||!g.playing)return;
@@ -4574,9 +4575,21 @@ function chaosUpdate(x,y){
     }
     // 上下だけは開閉ぶんに応じてフィルターそのものも動かす。カットオフが動くことで
     // DJのフィルターノブのような「開く/閉じる」感触が出る。線でちょうど全開に達する。
+    //
+    // 効きが「全然ぬるい」ので作り直した。変えたのは3つ。
+    //  ・行き着く先を極端に(ハイパス 4.5k→8k、ローパス 800→180Hz)。
+    //    4.5kや800Hzでは、まだ芯が残っていて「振り切った」感じにならない。
+    //  ・周波数の動かし方を等比に。以前は直線に足していたので、序盤は数字が動いても
+    //    耳にはほぼ変化がなく、終盤で急に効く不自然な効き方だった。
+    //    耳は周波数を比で聴くので、等比なら最初から最後まで均等に効く。
+    //  ・共振(Q)を0.7→4まで連れて上げる。DJのフィルターの、閉じる手前で
+    //    ぐっと鳴く感じはここから出る。
     const sweep=Math.min(1,radius/CHAOS_FILTER_MAX_RADIUS);
-    chaosNodes.societyHP.frequency.setTargetAtTime(20+Math.pow(sweep,1.4)*4500,t,.05);
-    chaosNodes.tokioLP.frequency.setTargetAtTime(18000-Math.pow(sweep,1.4)*17200,t,.05);
+    chaosNodes.societyHP.frequency.setTargetAtTime(20*Math.pow(8000/20,sweep),t,.05);
+    chaosNodes.tokioLP.frequency.setTargetAtTime(18000*Math.pow(180/18000,sweep),t,.05);
+    const q=.7+sweep*3.3;
+    chaosNodes.societyHP.Q.setTargetAtTime(q,t,.05);
+    chaosNodes.tokioLP.Q.setTargetAtTime(q,t,.05);
     // grainDry(粒の生っぽさ)は方向を問わず radius だけで開く常時ブリードなので、
     // 縁(歌だけのはずのゾーン)でも粒立った原音が薄く漏れ続けてしまう。
     // 歌が優勢になった分だけここも一緒にミュートし、縁では本当に歌だけにする。
