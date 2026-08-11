@@ -4359,9 +4359,14 @@ function getChaosBus(){
   const societyOut=ctx.createGain();societyOut.gain.value=.9;
   chaosBus.connect(societySend).connect(societyHP);
   societyMelodyGain.connect(societyHP);
-  // 2拍遅れの輪唱。歌は1音がだいたい4拍なので、半分ずらすと自分自身と重なって
-  // 追いかけっこになる。フィルターの手前へ返すので、遅れた声も同じ質感で濾される。
-  const societyCanon=makeCanonDelay(ctx,societyMelodyGain,societyHP);
+  // 切る位置そのものをゆっくり揺らす。Qを4まで上げてあるので切り際が鳴っており、
+  // そこが動くと共振点が移動して「ヒュゥゥ」と喋るように聞こえる。音を足さず、
+  // 既にある共振を動かすだけ。周波数のパラメータへ直接足し込む形で繋ぐ。
+  // 深さは線より外でだけ効かせる(chaosUpdateがmelodyLevelに応じて開く)。
+  // 手前で効かせると、開閉の途中でカットオフが暴れて操作感が濁るため。
+  const societySwirl=ctx.createOscillator();societySwirl.frequency.value=.06;
+  const societySwirlDepth=ctx.createGain();societySwirlDepth.gain.value=0;
+  societySwirl.connect(societySwirlDepth).connect(societyHP.frequency);societySwirl.start();
   societyHP.connect(societyOut).connect(chaosOut);
 
   // ---- PARAISO: ピッチ上げ、ディレイ+長く煌めくリバーブ、終わらない安らぎ ----
@@ -4391,8 +4396,15 @@ function getChaosBus(){
   const tokioMelodyGain=ctx.createGain();tokioMelodyGain.gain.value=0;
   const tokioOut=ctx.createGain();tokioOut.gain.value=.9;
   chaosBus.connect(tokioSend).connect(tokioLP);
-  tokioMelodyGain.connect(tokioLP);
-  const tokioCanon=makeCanonDelay(ctx,tokioMelodyGain,tokioLP);
+  // 拍ごとに音量を凹ませる。伸びた低音は動きが無いと存在を忘れられるが、
+  // 拍の頭で沈めて拍のあいだに戻すと、持続音が拍で呼吸しはじめる。
+  // のこぎり波は1周のあいだ谷から山へ登って頭で落ちるので、その形がそのまま使える。
+  // 歌の経路にだけ挟むので、盤側の音は凹まない。
+  const tokioPump=ctx.createGain();tokioPump.gain.value=1;
+  const tokioPumpOsc=ctx.createOscillator();tokioPumpOsc.type="sawtooth";tokioPumpOsc.frequency.value=1.83;
+  const tokioPumpDepth=ctx.createGain();tokioPumpDepth.gain.value=0;
+  tokioPumpOsc.connect(tokioPumpDepth).connect(tokioPump.gain);tokioPumpOsc.start();
+  tokioMelodyGain.connect(tokioPump).connect(tokioLP);
   tokioLP.connect(tokioOut).connect(chaosOut);
 
   // ---- ZION: 荘厳、パイプオルガン的持続、コーラス+超ロングリバーブ ----
@@ -4454,7 +4466,7 @@ function getChaosBus(){
     societyHP,tokioLP,
     melodyGains:{society:societyMelodyGain,tokio:tokioMelodyGain,paraiso:paraisoMelodyGain,zion:zionMelodyGain},
     paraisoDelay,zionChorus,
-    canons:{society:societyCanon,tokio:tokioCanon},
+    societySwirl,societySwirlDepth,tokioPump,tokioPumpOsc,tokioPumpDepth,
     // 地獄ゾーンの揺れも拍に乗せる。ここだけ固定値のままだと、テンポを動かした時に
     // 4方角は付いてくるのに斜めだけ取り残されて、盤の中で辻褄が合わなくなる。
     hellLfos:{water:waterLFO,waterLp:waterLPLFO,fire:fireLFO,filter:filterLFO},
@@ -4475,9 +4487,9 @@ function updateChaosTempoSync(){
   if(chaosNodes.zionChorus.setRate)chaosNodes.zionChorus.setRate(1/(beat*8),t);
   // 斜め(地獄)の揺れ。元の固定値に近い刻みを選んであるので、質感は変えずに拍へ乗る
   // (BPM110で: 水 .35→.46Hz、水のフィルター .12→.11Hz、炎 9→7.3Hz、篩 3.2→3.7Hz)。
-  // 上下の歌の輪唱は2拍遅れ。1音がだいたい4拍なので、半分ずらすと自分と重なる。
-  for(const c of Object.values(chaosNodes.canons))
-    c.delay.delayTime.setTargetAtTime(Math.min(8,beat*2),t,.08);
+  // 上の共振の揺れは2小節で1周。下の凹みは拍ごと。どちらもテンポに追随する。
+  chaosNodes.societySwirl.frequency.setTargetAtTime(1/(beat*8),t,.1);
+  chaosNodes.tokioPumpOsc.frequency.setTargetAtTime(1/beat,t,.1);
   const h=chaosNodes.hellLfos;
   h.water.frequency.setTargetAtTime(1/(beat*4),t,.1);    // 1小節で1周
   h.waterLp.frequency.setTargetAtTime(1/(beat*16),t,.1); // 4小節で1周
@@ -4496,19 +4508,6 @@ function chaosDistCurve(amount){
   const n=4096,curve=new Float32Array(n);
   for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=Math.tanh(x*amount)/Math.tanh(amount)}
   return curve;
-}
-// 2拍遅れの輪唱を作る。inputの音を遅らせてdestへ返すだけの、並列に足す経路。
-// 戻りは35%だけ残す。無限に回すと歌が団子になるので、2〜3回で消える程度にとどめる。
-// 遅れの長さはBPMから決めるのでupdateChaosTempoSyncが後で設定する。
-// 上限8秒は、テンポを最も遅くした時(実効BPM20)の2拍=6秒を超えるため。
-function makeCanonDelay(ctx,input,dest){
-  const delay=ctx.createDelay(8);delay.delayTime.value=1.09; // BPM110の2拍。あとで拍に合わせ直す
-  const fb=ctx.createGain();fb.gain.value=.35;
-  const out=ctx.createGain();out.gain.value=.62; // 元の声より一段下げて、追いかける側だと分かるように
-  input.connect(delay);
-  delay.connect(fb).connect(delay);
-  delay.connect(out).connect(dest);
-  return{delay,fb,out};
 }
 function chaosChorus(ctx,{voices=3,baseDelay=.012,depth=.004,rate=.25}={}){
   const input=ctx.createGain(),output=ctx.createGain();
@@ -4704,6 +4703,13 @@ function chaosUpdate(x,y){
     // 縁(歌だけのはずのゾーン)でも粒立った原音が薄く漏れ続けてしまう。
     // 歌が優勢になった分だけここも一緒にミュートし、縁では本当に歌だけにする。
     chaosNodes.grainDry.gain.setTargetAtTime(radius*.55*(1-melodyLevel),t,.05);
+    // 上の共振の揺れと下の凹みは、歌が出ている線より外でだけ効かせる。
+    // 手前から効かせると、開閉の途中でカットオフや音量が暴れて操作感が濁る。
+    // 揺れ幅2500Hzは8kHzのまわりを5.5k〜10.5kで動く量(耳では上下0.8オクターブ弱)。
+    chaosNodes.societySwirlDepth.gain.setTargetAtTime(melodyLevel*2500,t,.08);
+    // 凹みは深さ0.4。のこぎり波が±0.4振れるぶん、素の値を下げて頭を1.0に保つ。
+    chaosNodes.tokioPumpDepth.gain.setTargetAtTime(melodyLevel*.4,t,.08);
+    chaosNodes.tokioPump.gain.setTargetAtTime(1-melodyLevel*.4,t,.08);
   }
   const radiusExcess=Math.max(0,(radius-.6)/.4);
   let activeLabel="-",activeColor=null,maxHell=0;
