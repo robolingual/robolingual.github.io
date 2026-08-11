@@ -793,6 +793,29 @@ const BARS_PER_LOOP=8; // ループは常に8小節固定(4/8切り替えは廃�
 let sourceBuffer=null,audioContext=null,mono=null,attacks=[],soundLogoBuffer=null,renderedSoundLogo=null;
 // 八卦盤を線より外へ振り切った時に鳴る、方角ごとの素材。TRANSLATE1回につき1度だけ作る。
 let renderedChaosMelody=null; // {society,paraiso,tokio,zion} の AudioBuffer
+// 歌が、そのセッションのループ(A/B/C)の平均に対してどの高さに来るか。
+// これまでは素材任せで、実測1.16〜2.09倍(平均およそ1.6倍)に散らばっていた。
+// 全体の大きさは今までのままにして、ばらつきだけ消したいので平均の1.6に揃える。
+// 大きい/小さいと感じたら、ここの数字ひとつで動く。
+const CHAOS_MELODY_LEVEL=1.6;
+function rmsOf(arr){let s=0;for(let i=0;i<arr.length;i++)s+=arr[i]*arr[i];return Math.sqrt(s/Math.max(1,arr.length))}
+// 目標のRMSへ揃える。softLimitは使えない(ピークを目標値へ引き伸ばす作りなので、
+// せっかく合わせたRMSが素材ごとにまた散らばってしまう)。
+// ピークの高い素材は、目標まで上げると振り切れて頭打ちになる。tanhはピークを潰しても
+// RMSはさほど削らないので、丸めてから合わせ直せば狙いの高さに乗る。数回で収まる。
+// 上げ幅は青天井にせず、素材が小さすぎる時にノイズだけ持ち上がるのを防ぐ。
+function normalizeRmsTo(arr,target){
+  if(target<=0)return;
+  for(let pass=0;pass<4;pass++){
+    const cur=rmsOf(arr);
+    if(cur<=1e-6)return;
+    const gain=Math.min(6,target/cur);
+    for(let i=0;i<arr.length;i++)arr[i]*=gain;
+    let peak=0;for(let i=0;i<arr.length;i++)peak=Math.max(peak,Math.abs(arr[i]));
+    if(peak<=.98)return;
+    for(let i=0;i<arr.length;i++)arr[i]=Math.tanh(arr[i]);
+  }
+}
 // 5度上を重ねたハーモナイザー版を作る。完全5度(7半音)はSCALE_TEMPLATES全種に共通の
 // 音程なので、どのキーで検出されても外れない。読み進む速さを上げるだけの簡易な作りで、
 // 中身は元の尺の中で巻き戻るが、伸ばした持続音が相手なので和音として成立する。
@@ -1298,28 +1321,6 @@ async function runTranslate(){
     detectedScale=estimateScale(pitchTrack);
     for(const sl of sourceSlices)tagSliceWithPitch(sl,pitchTrack,detectedScale);
     updateExInterval(detectedScale);
-    // 八卦盤を線より外へ振り切った時に鳴る、素材そのもの。4方角ぶん用意する。
-    // ここで1度だけ作っておき、鳴らすかどうか・混ざり量は八卦盤側でその場で決める。
-    // 「歌わせる」のはやめて、2小節ぶんを切らず弄らず採り、4倍に伸ばして
-    // 8小節ちょうどにするだけにした(renderStretchedLoop参照)。
-    // 生成は重いので2本だけ作り、上=右、下=左(の素) で使い回す。同時に振り切れるのは
-    // 1方角だけなので、共有していても聴き分けられない。
-    {
-      const melodyRng=mulberry32(cryptoSeed());
-      const minVoicedLen=Math.floor(sr*.12);
-      const voiced=sourceSlices.filter(s=>s.length>minVoicedLen&&s.voicedRatio>=.4).sort((a,b)=>b.length-a.length);
-      const anchors=(voiced.length?voiced:sourceSlices).slice(0,Math.max(1,Math.ceil((voiced.length||sourceSlices.length)*.5)));
-      const startA=anchors[Math.floor(melodyRng()*anchors.length)].start;
-      const startB=anchors[Math.floor(melodyRng()*anchors.length)].start;
-      const melA=renderStretchedLoop(mono,sr,bpm,total,startA,.9);
-      const melB=renderStretchedLoop(mono,sr,bpm,total,startB,.9);
-      renderedChaosMelody={
-        society:toAudioBuffer(melA,sr),
-        paraiso:toAudioBuffer(melA,sr),
-        tokio:toAudioBuffer(melB,sr),
-        zion:toAudioBuffer(addFifthAbove(melB),sr), // 左はハーモナイザー
-      };
-    }
     const jobs=[
       ["ninja","a","Ninja",0,makeNinjaA,variantPools.a],
       ["ninja","b","Ninja",1,makeNinjaB,variantPools.b],
@@ -1339,6 +1340,7 @@ async function runTranslate(){
       ["witch","d","Witch",3,makeWitchD,variantPools.d]
     ];
     let jobIndex=0;
+    let loopRmsSum=0,loopRmsCount=0; // 歌の音量を合わせる基準。実際にループで鳴るA/B/Cだけ見る
     for(const[modeKey,variantKey,mode,variant,maker,slicePool]of jobs){
       // ?seed=数字 をURLに付けた時だけ固定シードを使う。通常はUIに何も出さず完全ランダムのまま。
       const fixedSeed=new URLSearchParams(location.search).get("seed");
@@ -1347,16 +1349,48 @@ async function runTranslate(){
       const isD=variantKey==="d";
       const output=isD?maker(mono,sr,bpm,4,totalD,attacks,rng,slicePool):maker(mono,sr,bpm,bars,total,attacks,rng,slicePool);
       softLimit(output,.96);
+      if(!isD){loopRmsSum+=rmsOf(output);loopRmsCount++}
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
       const blob=encodeWav(output,sr);
       renderedBlobs[modeKey][variantKey]=blob;
       await nextFrame();
+    }
+    // 八卦盤を線より外へ振り切った時に鳴る、素材そのもの。4方角ぶん用意する。
+    // ここで1度だけ作っておき、鳴らすかどうか・混ざり量は八卦盤側でその場で決める。
+    // 「歌わせる」のはやめて、2小節ぶんを切らず弄らず採り、4倍に伸ばして
+    // 8小節ちょうどにするだけにした(renderStretchedLoop参照)。
+    // 生成は重いので2本だけ作り、上=右、下=左(の素) で使い回す。同時に振り切れるのは
+    // 1方角だけなので、共有していても聴き分けられない。
+    //
+    // 音量は素材によって倍近く振れる(実測でRMS .038〜.075)ので、固定の係数では
+    // セッションごとにまちまちになる。16パッドの中で実際にループで鳴るA/B/Cの平均RMSを
+    // そのセッションの基準として、歌がそこへ並ぶよう後から正規化する。
+    // 線の外は歌だけになるので、基準と同じ高さに来れば音量差なく入れ替わる。
+    {
+      const melodyRng=mulberry32(cryptoSeed());
+      const minVoicedLen=Math.floor(sr*.12);
+      const voiced=sourceSlices.filter(s=>s.length>minVoicedLen&&s.voicedRatio>=.4).sort((a,b)=>b.length-a.length);
+      const anchors=(voiced.length?voiced:sourceSlices).slice(0,Math.max(1,Math.ceil((voiced.length||sourceSlices.length)*.5)));
+      const startA=anchors[Math.floor(melodyRng()*anchors.length)].start;
+      const startB=anchors[Math.floor(melodyRng()*anchors.length)].start;
+      const melA=renderStretchedLoop(mono,sr,bpm,total,startA,.9);
+      const melB=renderStretchedLoop(mono,sr,bpm,total,startB,.9);
+      const melZ=addFifthAbove(melB); // 左はハーモナイザー。重ねたぶん上がるので個別に測る
+      const reference=(loopRmsCount?loopRmsSum/loopRmsCount:.08)*CHAOS_MELODY_LEVEL;
+      for(const arr of [melA,melB,melZ])normalizeRmsTo(arr,reference);
+      renderedChaosMelody={
+        society:toAudioBuffer(melA,sr),
+        paraiso:toAudioBuffer(melA,sr),
+        tokio:toAudioBuffer(melB,sr),
+        zion:toAudioBuffer(melZ,sr),
+      };
     }
     setSamplerEnabled(true);
     performanceRec.disabled=false;
     lastTouched="mixer";
     renderedBpm=bpm;
     updateEffectiveBpm();
+    updateChaosTempoSync(); // 新しいBPMに左右のディレイ/うねりを合わせ直す
     resetSwitches();
     updateSaveButton();
     setStatus("Translated");
@@ -2017,6 +2051,7 @@ function setMasterRate(rate){
   }
   speedValue.textContent=`${masterRate.toFixed(2)}×`;
   updateEffectiveBpm();
+  updateChaosTempoSync(); // 左右のディレイ/うねりも一緒に伸び縮みさせる
 }
 
 function resetMasterRate(){
@@ -4242,7 +4277,11 @@ function getChaosBus(){
   // ---- PARAISO: ピッチ上げ、ディレイ+長く煌めくリバーブ、終わらない安らぎ ----
   const paraisoSend=ctx.createGain();paraisoSend.gain.value=0;
   const paraisoHP=ctx.createBiquadFilter();paraisoHP.type="highpass";paraisoHP.frequency.value=160;
-  const paraisoDelay=ctx.createDelay(1);paraisoDelay.delayTime.value=.38;
+  // ディレイの長さは拍に合わせる(updateChaosTempoSync)。固定0.38秒だと、たまたま
+  // BPM110の付点8分(0.409秒)に近いだけで、他のテンポでは拍と喧嘩していた。
+  // 拍に乗ると戻ってくる音が勝手にリズムを作るので、触っていて気持ちがいい。
+  // テンポを最も遅くした時(実効BPM20)の付点8分=2.25秒まで伸びるので、上限は3秒取る。
+  const paraisoDelay=ctx.createDelay(3);paraisoDelay.delayTime.value=.409;
   const paraisoFB=ctx.createGain();paraisoFB.gain.value=.42;paraisoDelay.connect(paraisoFB).connect(paraisoDelay);
   const paraisoConv=ctx.createConvolver();paraisoConv.buffer=chaosImpulse(ctx,3.2,2.2);
   const paraisoOut=ctx.createGain();paraisoOut.gain.value=.75;
@@ -4320,8 +4359,22 @@ function getChaosBus(){
     slicerGate,
     societyHP,tokioLP,
     melodyGains:{society:societyMelodyGain,tokio:tokioMelodyGain,paraiso:paraisoMelodyGain,zion:zionMelodyGain},
+    paraisoDelay,zionChorus,
   };
+  updateChaosTempoSync();
   return chaosBus;
+}
+// 左右のエフェクトの時間を、今聴こえているテンポへ合わせる。
+// テンポスライダーを動かすと実効BPMが変わるので、setMasterRateからも呼ぶ。
+function updateChaosTempoSync(){
+  if(!chaosNodes)return;
+  const base=renderedBpm||Number(bpmInput.value)||110;
+  const effBpm=Math.max(20,Math.min(800,base*masterRate));
+  const beat=60/effBpm,t=getAudioContext().currentTime;
+  // PARAISO(右)は付点8分。4分より詰まっていて、裏拍に絡むので踊れる長さ。
+  chaosNodes.paraisoDelay.delayTime.setTargetAtTime(Math.min(3,beat*.75),t,.08);
+  // ZION(左)のうねりは2小節で1周。長く伸ばした音がゆっくり寄せて返す。
+  if(chaosNodes.zionChorus.setRate)chaosNodes.zionChorus.setRate(1/(beat*8),t);
 }
 function getChaosOut(){getChaosBus();return chaosOut}
 
@@ -4338,15 +4391,19 @@ function chaosDistCurve(amount){
 }
 function chaosChorus(ctx,{voices=3,baseDelay=.012,depth=.004,rate=.25}={}){
   const input=ctx.createGain(),output=ctx.createGain();
+  const lfos=[];
   for(let i=0;i<voices;i++){
     const delay=ctx.createDelay(.05);delay.delayTime.value=baseDelay+i*.003;
     const lfo=ctx.createOscillator();lfo.frequency.value=rate+i*.07;
     const lfoGain=ctx.createGain();lfoGain.gain.value=depth;
     lfo.connect(lfoGain).connect(delay.delayTime);lfo.start();
+    lfos.push({lfo,offset:i*.07});
     const vGain=ctx.createGain();vGain.gain.value=1/voices;
     input.connect(delay).connect(vGain).connect(output);
   }
-  return {input,output};
+  // うねりの速さを後から拍に合わせられるようにしておく。声ごとの僅かなズレは保つ。
+  const setRate=(hz,t)=>{for(const v of lfos)v.lfo.frequency.setTargetAtTime(Math.max(.02,hz+v.offset),t,.1)};
+  return {input,output,setRate};
 }
 
 // キャプチャ済みリング(captureBuffer/captureData/capturePos)の中から、書き込み位置と衝突しない
@@ -4487,8 +4544,11 @@ function chaosUpdate(x,y){
     chaosNodes.dryGain.gain.setTargetAtTime(1-radius,t,.05);
     // 線(盤の絵の内側の輪郭)から縁までの位置。線=0、縁=1。
     const lineT=amt=>Math.max(0,Math.min(1,(amt-CHAOS_FILTER_MAX_RADIUS)/(1-CHAOS_FILTER_MAX_RADIUS)));
-    // 歌の音量: 線を超えて3割まで無音、そこから縁へ向けて立ち上がる。最大は1.1(+10%)。
-    const melodyFade=amt=>{const tt=lineT(amt);return tt<=.3?0:Math.min(1,(tt-.3)/.7)*1.1};
+    // 歌の音量: 線を超えて3割まで無音、そこから縁へ向けて立ち上がり、縁で1.0になる。
+    // 「どのくらい大きいか」は係数ではなくTRANSLATE時の正規化で決めてある
+    // (CHAOS_MELODY_LEVEL)。素材によって元の音量が倍近く振れるため、
+    // ここで一律に持ち上げるとセッションごとにまちまちになるので。
+    const melodyFade=amt=>{const tt=lineT(amt);return tt<=.3?0:Math.min(1,(tt-.3)/.7)};
     // 元の音: 線までは普通に育ち、線を超えたらそこで足止め。3割までは据え置きで、
     // そこから9割の地点でゼロになる。残りの1割は歌の音量だけが動く。
     const lineSend=amt=>{
