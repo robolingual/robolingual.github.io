@@ -3091,6 +3091,14 @@ function scaleStepSemitone(scale,index){
   const ladder=scaleSemitoneLadder(scale,true);
   return ladder[((index%ladder.length)+ladder.length)%ladder.length];
 }
+// 度数(0=主音、1=音階の2番目…音数を超えたら1オクターブ上)を半音へ。
+// scaleStepSemitoneは滑り用に圧縮したラダーなので、「音階の何番目か」を
+// そのまま踏みたいリフには使えない。ここはscale.intervalsを直に引く。
+function scaleDegreeSemitone(scale,degree){
+  if(!scale)return degree*2; // 検出できなかった時の保険:全音刻み
+  const n=scale.intervals.length,idx=((degree%n)+n)%n,octave=Math.floor(degree/n);
+  return scale.intervals[idx]+octave*12;
+}
 // 「1音ずつ歌わせる」のはやめて、自然な発音のひとまとまり(フレーズ)を切ったり
 // 弄ったりせず丸ごと使い、8小節ぶんの尺に合うまでただ引き伸ばす(=スロー再生)。
 // ただし単純なリサンプリングだと再生速度を落とすぶんピッチも一緒に下がってしまう
@@ -3277,7 +3285,7 @@ function makeNinjaB(src,sr,bpm,bars,total,attackList,rng,slicePool){
  }
  return out
 }
-function renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,hard){
+function renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,hard,rate){
  const pool=ensureMinimumSlices(slices,src,sr,4).slice();
  const chosen=[];
  while(chosen.length<4){
@@ -3286,7 +3294,7 @@ function renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,hard){
  }
  const [A,B,C,D]=chosen;
  const gain=hard?.86:.64;
- const hit=(slice,offset,dur,g=gain)=>renderOneShot(out,src,base+Math.floor(offset*beat),slice.start,Math.max(Math.floor(sr*.025),Math.min(slice.length,Math.floor(dur*beat))),g+rng()*.08);
+ const hit=(slice,offset,dur,g=gain)=>renderOneShot(out,src,base+Math.floor(offset*beat),slice.start,Math.max(Math.floor(sr*.025),Math.min(slice.length,Math.floor(dur*beat))),g+rng()*.08,rate);
  // 4拍。[]は半拍： [A(休)][B]・[CC][B]・[AD][BD]・[A][B]
  hit(A,0,.20);                    // Aの後半は休符
  hit(B,.5,.42);
@@ -3436,7 +3444,7 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
 }
 function makeKillerA(src,sr,bpm,bars,total,attackList,rng,slicePool){return makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,true)}
 function makeKillerB(src,sr,bpm,bars,total,attackList,rng,slicePool){return makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,false)}
-function renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng){
+function renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng,rate){
   // BANKER固有：確率に頼らず、拍ごとに確実にキックを打つ生真面目な四つ打ち（ガバー的）。
   // 4拍とも同じ音にならないよう、拍ごとに違うスライスと強弱(アクセント)を明確に割り当てる。
   const accents=[1.0,.78,.94,.82]; // 1拍目・3拍目を強め、2拍目・4拍目を少し抑えたバックビート寄りのアクセント
@@ -3445,51 +3453,58 @@ function renderGabberFourOnFloor(out,src,base,beat,slices,sr,rng){
     const sl=slices[(q*3+Math.floor(rng()*2))%slices.length]; // 拍ごとに異なるスライスを固定的に選ぶ
     const len=Math.floor(beat*(.45+(q%2===0?.15:0))); // 1拍目・3拍目は少し長め
     const hitLen=Math.min(sl.length,len);
-    renderOneShot(out,src,dest,sl.start,hitLen,accents[q]*(.92+rng()*.06));
-    highPassInPlace(out,dest,hitLen,sr,160); // 低域を軽く削って団子状の濁りを防ぐ
+    renderOneShot(out,src,dest,sl.start,hitLen,accents[q]*(.92+rng()*.06),rate);
+    // 低域を軽く削って団子状の濁りを防ぐ。ただし音を下げた時は、切る位置も一緒に下げないと
+    // せっかく作った低い方の土台をここで削ってしまう(1オクターブ下げなら160→80Hz)。
+    highPassInPlace(out,dest,hitLen,sr,160*(rate||1));
   }
 }
 // BANKER固有：4つ打ちだけでなく、サンプリングドラマーとしての小技を持たせる。
 // 音量と休符の対比を自分のトラックの中だけで作る(他キャラには一切干渉しない)。
-function renderBankerJungleChop(out,src,base,beat,slices,sr,rng){
+function renderBankerJungleChop(out,src,base,beat,slices,sr,rng,rate){
   // アーメン刻み風：裏に食い込む位置へキック/スネア役を置く。
   const cells=[0,.375,.5,.75,.875],roles=[.95,.6,.85,.55,.7];
   for(let i=0;i<cells.length;i++){
     const dest=base+Math.floor(cells[i]*beat*4);
     const sl=slices[(i*2)%slices.length];
-    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.14)),roles[i]*(.9+rng()*.1));
+    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.14)),roles[i]*(.9+rng()*.1),rate);
   }
 }
-function renderBankerShuffle(out,src,base,beat,slices,sr,rng){
+function renderBankerShuffle(out,src,base,beat,slices,sr,rng,rate){
   // 3連ハネ：拍の頭と、3連符の最後だけを軽く添える。
   for(let q=0;q<4;q++){
     const dest=base+Math.floor(q*beat);
     const sl=slices[(q*3)%slices.length];
-    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.3)),.88+rng()*.08);
+    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.3)),.88+rng()*.08,rate);
     if(q%2===0){
       const d2=dest+Math.floor(beat*2/3),sl2=slices[(q*3+1)%slices.length];
-      renderOneShot(out,src,d2,sl2.start,Math.min(sl2.length,Math.floor(beat*.16)),.6+rng()*.08);
+      renderOneShot(out,src,d2,sl2.start,Math.min(sl2.length,Math.floor(beat*.16)),.6+rng()*.08,rate);
     }
   }
 }
-function renderBankerRoll(out,src,base,beat,slices,sr,rng){
+function renderBankerRoll(out,src,base,beat,slices,sr,rng,rate){
   // ロール：前半2拍はそのまま、後半2拍を16分で埋めてタメを作り、次の小節へなだれ込む。
   for(let q=0;q<2;q++){
     const dest=base+Math.floor(q*beat),sl=slices[q%slices.length];
-    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.5)),.9+rng()*.06);
+    renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.5)),.9+rng()*.06,rate);
   }
   const rollStart=base+Math.floor(beat*2),n=8;
   for(let i=0;i<n;i++){
     const d=rollStart+Math.floor(i*beat*2/n),sl=slices[(i*2+1)%slices.length];
-    renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.015),Math.min(sl.length,Math.floor(beat*.08))),.7+i/n*.25);
+    renderOneShot(out,src,d,sl.start,Math.max(Math.floor(sr*.015),Math.min(sl.length,Math.floor(beat*.08))),.7+i/n*.25,rate);
   }
 }
-function renderBankerBreak(out,src,base,beat,slices,sr,rng){
+function renderBankerBreak(out,src,base,beat,slices,sr,rng,rate){
   // ブレイク：小節の頭だけ強く鳴らし、残りは狙って完全な休符にする。
   // これは無音バグではなく武器。「たまたま無音」と「狙った無音」は別物にしておく。
   const sl=slices[0];
-  renderOneShot(out,src,base,sl.start,Math.min(sl.length,Math.floor(beat*.4)),1.0);
+  renderOneShot(out,src,base,sl.start,Math.min(sl.length,Math.floor(beat*.4)),1.0,rate);
 }
+// BANKERは全音1オクターブ下げ(再生速度0.5倍)で鳴らす。パターンの刻みはそのまま。
+// プリセットはどれもボーカルステムで、実測すると音の9割近くが中音域に固まっており
+// (150Hz以下が2.2〜6.7%、6kHz以上が6.2〜8.0%)、ハイパス/ローパスに削るものが無かった。
+// BANKERを一段下げて低い方の土台を作れば、ローパスで削る対象ができる。
+const BANKER_OCTAVE_RATE=.5;
 const BANKER_PHRASES=[
   {name:"floor",w:.45,fn:renderGabberFourOnFloor},
   {name:"jungle",w:.2,fn:renderBankerJungleChop},
@@ -3512,14 +3527,14 @@ function makeBankerA(src,sr,bpm,bars,total,attackList,rng,slicePool){
   for(let b=0;b<bars;b++){
     const base=Math.floor(b*bar);
     const phrase=pickBankerPhrase(rng);
-    phrase.fn(out,src,base,beat,slices,sr,rng);
+    phrase.fn(out,src,base,beat,slices,sr,rng,BANKER_OCTAVE_RATE);
     // BANKER固有：感情の起伏ではなく、後半から正確な裏打ちレイヤーを機械的に追加する(ランダムではなく確定)。
     // ただしブレイクの小節には足さない。狙った休符を台無しにしないため。
     if(bars>=8&&b>=halfway&&phrase.name!=="break"){
       for(let e=0;e<4;e++){
         const dest=base+Math.floor((e+.5)*beat);
         const sl=slices[(e*5+2)%slices.length];
-        renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.16)),.34);
+        renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.16)),.34,BANKER_OCTAVE_RATE);
       }
     }
   }
@@ -3532,19 +3547,19 @@ function makeBankerB(src,sr,bpm,bars,total,attackList,rng,slicePool){
   for(let b=0;b<bars;b++){
     const base=Math.floor(b*bar);
     const phrase=pickBankerPhrase(rng);
-    phrase.fn(out,src,base,beat,slices,sr,rng);
+    phrase.fn(out,src,base,beat,slices,sr,rng,BANKER_OCTAVE_RATE);
     // 裏拍にも均等な刻みを足し、机帳面さ・機械的な正確さを強調する。ブレイクの小節は空けたままにする。
     if(phrase.name!=="break")for(let e=0;e<4;e++){
       const dest=base+Math.floor((e+.5)*beat);
       const sl=slices[(e*2+1)%slices.length];
-      renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.2)),.42+rng()*.06);
+      renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.2)),.42+rng()*.06,BANKER_OCTAVE_RATE);
     }
     // BANKER固有：後半からは16分単位まで正確さを上げる(決め打ち、ランダムに頼らない機械的エスカレーション)。
     if(bars>=8&&b>=halfway&&phrase.name!=="break"){
       for(let s=0;s<4;s++){
         const dest=base+Math.floor((s+.25)*beat);
         const sl=slices[(s*3+1)%slices.length];
-        renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.1)),.26);
+        renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.1)),.26,BANKER_OCTAVE_RATE);
       }
     }
   }
@@ -3588,10 +3603,10 @@ function makeBankerC(src,sr,bpm,bars,total,attackList,rng,slicePool){
   const halfway=Math.floor(bars/2);
   for(let b=0;b<bars;b++){
     const base=Math.floor(b*bar);
-    renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,true);
+    renderKillerFourSlicePattern(out,src,base,beat,slices,sr,rng,true,BANKER_OCTAVE_RATE);
     if(bars>=8&&b>=halfway){
       const sl=slices[(b*3+1)%slices.length];
-      renderOneShot(out,src,base+Math.floor(beat*3.75),sl.start,Math.min(sl.length,Math.floor(beat*.1)),.3);
+      renderOneShot(out,src,base+Math.floor(beat*3.75),sl.start,Math.min(sl.length,Math.floor(beat*.1)),.3,BANKER_OCTAVE_RATE);
     }
   }
   return out;
@@ -3684,9 +3699,12 @@ function makeBankerD(src,sr,bpm,bars,total,attackList,rng,slicePool){
 function makeWitchA(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
  const slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
+ const riffPlan=pickWitchRiffPlan(rng,bars,slices,.45); // 1オクターブ上のリフ
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar),barEnd=Math.min(total,base+Math.floor(bar));
    const progress=bars>1?b/(bars-1):0; // WITCH：終盤に向けてカオスの頂点へ
+   if(riffPlan&&(b===riffPlan.at||b===riffPlan.at+1))
+     renderWitchOctaveRiff(out,src,base,beat,slices,sr,rng,detectedScale,riffPlan.riff,riffPlan.sl);
    for(let q=0;q<4;q++){
      const dest=base+Math.floor(q*beat),sl=pickWeightedSlice(slices,rng,true);
      if(rng()<.5+progress*.15){
@@ -3725,12 +3743,50 @@ function renderWitchWildThenClean(out,src,base,beat,slices,sr,rng,scale){
   const cleanSlice=onScale.length?pick(onScale,rng):sl;
   renderOneShot(out,src,base+Math.floor(beat*1.1),cleanSlice.start,Math.min(cleanSlice.length,len),.62+rng()*.1); // 清書版
 }
+// WITCH固有：1オクターブ上を使った短いリフ。素材の9割近くが中音域に固まっていて
+// (実測)、ハイパスに削るものが無かったので、上の方の土台をここで作る。
+// SEのようにバラバラ撒くのではなく、音階の上を動く決まった形にする。
+// 音の並びは4小節の弧を描く形(上って戻る/落として支える)にしてあり、
+// 同じ形を2小節続けて鳴らすので、耳が「さっきの節がまた来た」と追える。
+const WITCH_OCTAVE_RIFFS=[
+  [{at:0,deg:0},{at:.75,deg:2},{at:1.5,deg:4},{at:2.5,deg:2},{at:3.25,deg:0}],
+  [{at:0,deg:4},{at:.5,deg:2},{at:1.25,deg:0},{at:2,deg:0},{at:3,deg:2}],
+  [{at:0,deg:0},{at:1,deg:3},{at:1.75,deg:2},{at:2.5,deg:4},{at:3.5,deg:0}],
+  [{at:.5,deg:2},{at:1,deg:4},{at:2,deg:3},{at:2.75,deg:1},{at:3.5,deg:0}],
+];
+// リフ全体を1つのスライスで通す。声色が変わらないぶん「同じ楽器が弾いている」形になり、
+// 継ぎはぎのSEではなくフレーズとして聞こえる。音程はそのスライス自身が持つ高さから
+// 目標の度数への最短補正で合わせ、そこへ1オクターブ足す。
+function renderWitchOctaveRiff(out,src,base,beat,slices,sr,rng,scale,riff,sl){
+  if(!sl)return;
+  const root=scale?scale.root:0;
+  for(const n of riff){
+    const target=((root+scaleDegreeSemitone(scale,n.deg))%12+12)%12;
+    let corr=0;
+    if(typeof sl.pitchClass==="number"&&sl.pitchClass>=0)corr=((target-sl.pitchClass+18)%12)-6;
+    const dest=base+Math.floor(n.at*beat);
+    const len=Math.max(Math.floor(sr*.03),Math.min(sl.length,Math.floor(beat*.42)));
+    renderPitchedOneShot(out,src,dest,sl.start,len,.46+rng()*.08,12+corr);
+  }
+}
+// リフを鳴らす小節を決める。2小節ひと組で、4小節の区切りの中に置く。
+function pickWitchRiffPlan(rng,bars,slices,chance){
+  if(bars<4||rng()>=chance)return null;
+  const voiced=slices.filter(s=>typeof s.pitchClass==="number"&&s.pitchClass>=0);
+  const pool=voiced.length?voiced:slices;
+  if(!pool.length)return null;
+  const starts=[];for(let b=0;b+1<bars;b+=2)starts.push(b);
+  return{at:pick(starts,rng),riff:pick(WITCH_OCTAVE_RIFFS,rng),sl:pick(pool,rng)};
+}
 function makeWitchB(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
  const slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
+ const riffPlan=pickWitchRiffPlan(rng,bars,slices,.5); // 1オクターブ上のリフ
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar);
    const progress=bars>1?b/(bars-1):0;
+   if(riffPlan&&(b===riffPlan.at||b===riffPlan.at+1))
+     renderWitchOctaveRiff(out,src,base,beat,slices,sr,rng,detectedScale,riffPlan.riff,riffPlan.sl);
    for(let q=0;q<4;q++){
      const sl=pickWeightedSlice(slices,rng,true),dest=base+Math.floor(q*beat);
      if(rng()<.5)renderReversedOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.62)),.6+rng()*.12);
@@ -3856,7 +3912,22 @@ function renderPitchFall(out,src,dest,sl,target,gain){
    phase+=ratio;
  }
 }
-function renderOneShot(out,src,dest,start,length,gain){const attack=Math.min(48,Math.max(8,Math.floor(length*.015))),release=Math.max(24,Math.floor(length*.12));for(let i=0;i<length;i++){const d=dest+i,s=start+i;if(d>=out.length||s>=src.length)break;let env=1;if(i<attack)env=i/attack;if(i>length-release)env=Math.max(0,(length-i)/release);out[d]+=src[s]*gain*env}}
+// rate は素材を読み進める速さ。1で原音のまま、0.5で1オクターブ下(BANKERが使う)。
+// 出力側の長さは変わらないので、パターンの刻みはそのままに音程だけ下がる。
+function renderOneShot(out,src,dest,start,length,gain,rate){
+  const attack=Math.min(48,Math.max(8,Math.floor(length*.015))),release=Math.max(24,Math.floor(length*.12));
+  if(!rate||rate===1){
+    for(let i=0;i<length;i++){const d=dest+i,s=start+i;if(d>=out.length||s>=src.length)break;let env=1;if(i<attack)env=i/attack;if(i>length-release)env=Math.max(0,(length-i)/release);out[d]+=src[s]*gain*env}
+    return;
+  }
+  for(let i=0;i<length;i++){
+    const d=dest+i,pos=start+i*rate;
+    if(d>=out.length||pos>=src.length-1)break;
+    const p0=Math.floor(pos),f=pos-p0;
+    let env=1;if(i<attack)env=i/attack;if(i>length-release)env=Math.max(0,(length-i)/release);
+    out[d]+=(src[p0]*(1-f)+src[p0+1]*f)*gain*env;
+  }
+}
 function renderPitchedOneShot(out,src,dest,start,length,gain,semitones){
  // 3連符パターン用：一定の半音オフセットでピッチシフト再生するワンショット。
  const ratio=Math.pow(2,semitones/12);
