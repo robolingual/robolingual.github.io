@@ -1,4 +1,4 @@
-ROBOLINGUAL v1.0 マニュアル
+ROBOLINGUAL v1.0.1 マニュアル
 
 ▶ アプリを開く： https://robolingual.github.io/
 

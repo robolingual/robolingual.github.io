@@ -1,6 +1,6 @@
 {
   "name": "robolingual-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "ROBOLINGUAL の Windows 版ビルド用",
   "scripts": {

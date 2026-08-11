@@ -7,7 +7,7 @@
      外しておけば、万一拡大されてもピンチで戻せる。拡大させない対策は別途JS側。 -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080808">
-<title>Robolingual v1.0</title>
+<title>Robolingual v1.0.1</title>
 <style>
 /* ---------------------------------------------------------------
    Robolingual スタイルシート
@@ -658,7 +658,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
 </style>
 </head>
 <body>
-<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v1.0</div><button id="midiBtn" type="button" hidden>MIDI</button></div><main>
+<div class="window"><div class="scale-wrap" id="scaleWrap"><div class="titlebar"><div class="closebox"></div><div class="title">ROBOLINGUAL</div><div class="version">v1.0.1</div><button id="midiBtn" type="button" hidden>MIDI</button></div><main>
 <div id="deckSkin" aria-hidden="true"></div>
 <input id="source" type="file" accept="audio/*,video/*,.wav,.mp3,.m4a,.aac,.mp4,.m4v,.mov,.qt">
 
@@ -4262,6 +4262,14 @@ const CHAOS_DIR_ANGLE={society:0,paraiso:90,tokio:180,zion:270}; // compass: 上
 // 盤の絵に描かれた内側の線(トライグラムの内側)の半径(目測、中心0〜縁1)。
 // SOCIETY/TOKIOのフィルターはここで全開に達し、ここから縁までが「歌の音量」ゾーン。
 const CHAOS_FILTER_MAX_RADIUS=.35;
+// 歌の方角ごとの音量補正。上下はフィルターを通ってから出るので、通り抜けて残る量が
+// 左右より格段に小さい。補正前は 上 -37.3dB / 下 -35.1dB に対し 右 -16.6dB / 左 -17.7dB。
+// フィルターの手前で持ち上げるので、削れる割合は変わらず質感はそのまま。
+//
+// 係数は、歌だけを鳴らして8小節ループを丸ごと跨いで平均した値から引いた。
+// 短い窓(2秒程度)で測るとループの静かな所を拾って値が大きく振れるので当てにならない
+// (実際それで一度かけ過ぎた)。4方角の平均 -14.3dB へ揃えてある。
+const CHAOS_MELODY_MAKEUP={society:7.52,tokio:6.24,paraiso:1.69,zion:1.02};
 
 const CHAOS_GRAIN_PARAMS={
   society:{size:.08, rate:.85, jitter:.35, density:16, wobble:.03},
@@ -4351,6 +4359,9 @@ function getChaosBus(){
   const societyOut=ctx.createGain();societyOut.gain.value=.9;
   chaosBus.connect(societySend).connect(societyHP);
   societyMelodyGain.connect(societyHP);
+  // 2拍遅れの輪唱。歌は1音がだいたい4拍なので、半分ずらすと自分自身と重なって
+  // 追いかけっこになる。フィルターの手前へ返すので、遅れた声も同じ質感で濾される。
+  const societyCanon=makeCanonDelay(ctx,societyMelodyGain,societyHP);
   societyHP.connect(societyOut).connect(chaosOut);
 
   // ---- PARAISO: ピッチ上げ、ディレイ+長く煌めくリバーブ、終わらない安らぎ ----
@@ -4381,6 +4392,7 @@ function getChaosBus(){
   const tokioOut=ctx.createGain();tokioOut.gain.value=.9;
   chaosBus.connect(tokioSend).connect(tokioLP);
   tokioMelodyGain.connect(tokioLP);
+  const tokioCanon=makeCanonDelay(ctx,tokioMelodyGain,tokioLP);
   tokioLP.connect(tokioOut).connect(chaosOut);
 
   // ---- ZION: 荘厳、パイプオルガン的持続、コーラス+超ロングリバーブ ----
@@ -4442,6 +4454,7 @@ function getChaosBus(){
     societyHP,tokioLP,
     melodyGains:{society:societyMelodyGain,tokio:tokioMelodyGain,paraiso:paraisoMelodyGain,zion:zionMelodyGain},
     paraisoDelay,zionChorus,
+    canons:{society:societyCanon,tokio:tokioCanon},
     // 地獄ゾーンの揺れも拍に乗せる。ここだけ固定値のままだと、テンポを動かした時に
     // 4方角は付いてくるのに斜めだけ取り残されて、盤の中で辻褄が合わなくなる。
     hellLfos:{water:waterLFO,waterLp:waterLPLFO,fire:fireLFO,filter:filterLFO},
@@ -4462,6 +4475,9 @@ function updateChaosTempoSync(){
   if(chaosNodes.zionChorus.setRate)chaosNodes.zionChorus.setRate(1/(beat*8),t);
   // 斜め(地獄)の揺れ。元の固定値に近い刻みを選んであるので、質感は変えずに拍へ乗る
   // (BPM110で: 水 .35→.46Hz、水のフィルター .12→.11Hz、炎 9→7.3Hz、篩 3.2→3.7Hz)。
+  // 上下の歌の輪唱は2拍遅れ。1音がだいたい4拍なので、半分ずらすと自分と重なる。
+  for(const c of Object.values(chaosNodes.canons))
+    c.delay.delayTime.setTargetAtTime(Math.min(8,beat*2),t,.08);
   const h=chaosNodes.hellLfos;
   h.water.frequency.setTargetAtTime(1/(beat*4),t,.1);    // 1小節で1周
   h.waterLp.frequency.setTargetAtTime(1/(beat*16),t,.1); // 4小節で1周
@@ -4480,6 +4496,19 @@ function chaosDistCurve(amount){
   const n=4096,curve=new Float32Array(n);
   for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=Math.tanh(x*amount)/Math.tanh(amount)}
   return curve;
+}
+// 2拍遅れの輪唱を作る。inputの音を遅らせてdestへ返すだけの、並列に足す経路。
+// 戻りは35%だけ残す。無限に回すと歌が団子になるので、2〜3回で消える程度にとどめる。
+// 遅れの長さはBPMから決めるのでupdateChaosTempoSyncが後で設定する。
+// 上限8秒は、テンポを最も遅くした時(実効BPM20)の2拍=6秒を超えるため。
+function makeCanonDelay(ctx,input,dest){
+  const delay=ctx.createDelay(8);delay.delayTime.value=1.09; // BPM110の2拍。あとで拍に合わせ直す
+  const fb=ctx.createGain();fb.gain.value=.35;
+  const out=ctx.createGain();out.gain.value=.62; // 元の声より一段下げて、追いかける側だと分かるように
+  input.connect(delay);
+  delay.connect(fb).connect(delay);
+  delay.connect(out).connect(dest);
+  return{delay,fb,out};
 }
 function chaosChorus(ctx,{voices=3,baseDelay=.012,depth=.004,rate=.25}={}){
   const input=ctx.createGain(),output=ctx.createGain();
@@ -4652,7 +4681,7 @@ function chaosUpdate(x,y){
     // 4方角とも同じ仕組み。上下はハイパス/ローパス、左右は従来のエフェクトのまま。
     for(const d of CHAOS_DIRS){
       chaosNodes.sends[d].gain.setTargetAtTime(weights[d]*sendLevel,t,.05);
-      chaosNodes.melodyGains[d].gain.setTargetAtTime(weights[d]*melodyLevel,t,.08);
+      chaosNodes.melodyGains[d].gain.setTargetAtTime(weights[d]*melodyLevel*CHAOS_MELODY_MAKEUP[d],t,.08);
     }
     // 上下だけは開閉ぶんに応じてフィルターそのものも動かす。カットオフが動くことで
     // DJのフィルターノブのような「開く/閉じる」感触が出る。線でちょうど全開に達する。
