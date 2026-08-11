@@ -4360,6 +4360,9 @@ function getChaosBus(){
     societyHP,tokioLP,
     melodyGains:{society:societyMelodyGain,tokio:tokioMelodyGain,paraiso:paraisoMelodyGain,zion:zionMelodyGain},
     paraisoDelay,zionChorus,
+    // 地獄ゾーンの揺れも拍に乗せる。ここだけ固定値のままだと、テンポを動かした時に
+    // 4方角は付いてくるのに斜めだけ取り残されて、盤の中で辻褄が合わなくなる。
+    hellLfos:{water:waterLFO,waterLp:waterLPLFO,fire:fireLFO,filter:filterLFO},
   };
   updateChaosTempoSync();
   return chaosBus;
@@ -4375,6 +4378,13 @@ function updateChaosTempoSync(){
   chaosNodes.paraisoDelay.delayTime.setTargetAtTime(Math.min(3,beat*.75),t,.08);
   // ZION(左)のうねりは2小節で1周。長く伸ばした音がゆっくり寄せて返す。
   if(chaosNodes.zionChorus.setRate)chaosNodes.zionChorus.setRate(1/(beat*8),t);
+  // 斜め(地獄)の揺れ。元の固定値に近い刻みを選んであるので、質感は変えずに拍へ乗る
+  // (BPM110で: 水 .35→.46Hz、水のフィルター .12→.11Hz、炎 9→7.3Hz、篩 3.2→3.7Hz)。
+  const h=chaosNodes.hellLfos;
+  h.water.frequency.setTargetAtTime(1/(beat*4),t,.1);    // 1小節で1周
+  h.waterLp.frequency.setTargetAtTime(1/(beat*16),t,.1); // 4小節で1周
+  h.fire.frequency.setTargetAtTime(4/beat,t,.1);         // 16分の刻み
+  h.filter.frequency.setTargetAtTime(2/beat,t,.1);       // 8分の刻み
 }
 function getChaosOut(){getChaosBus();return chaosOut}
 
@@ -4542,35 +4552,35 @@ function chaosUpdate(x,y){
   const weights=chaosWeights(x,y);
   if(chaosNodes){
     chaosNodes.dryGain.gain.setTargetAtTime(1-radius,t,.05);
-    // 線(盤の絵の内側の輪郭)から縁までの位置。線=0、縁=1。
-    const lineT=amt=>Math.max(0,Math.min(1,(amt-CHAOS_FILTER_MAX_RADIUS)/(1-CHAOS_FILTER_MAX_RADIUS)));
+    // 線の内外は「盤の中心からの距離」だけで決める。以前は方角の重みを掛けた値で
+    // 判定していたため、斜めに引くと円を跨いでも効果が最大にならなかった
+    // (実測: 線の上でも真上なら4513Hz、45°傾けると1727Hzとマックスの38%止まり)。
+    // 盤には円が描いてあるので、その円を跨いだら最大、が見た目と一致する。
+    // 方角の重みは「どの効果がどれだけ鳴るか」の配分にだけ使う。重みの合計は常に1なので、
+    // 配分に使っても全体の音量は角度によらず変わらない。
+    const lineT=Math.max(0,Math.min(1,(radius-CHAOS_FILTER_MAX_RADIUS)/(1-CHAOS_FILTER_MAX_RADIUS)));
     // 歌の音量: 線を超えて3割まで無音、そこから縁へ向けて立ち上がり、縁で1.0になる。
     // 「どのくらい大きいか」は係数ではなくTRANSLATE時の正規化で決めてある
     // (CHAOS_MELODY_LEVEL)。素材によって元の音量が倍近く振れるため、
     // ここで一律に持ち上げるとセッションごとにまちまちになるので。
-    const melodyFade=amt=>{const tt=lineT(amt);return tt<=.3?0:Math.min(1,(tt-.3)/.7)};
+    const melodyLevel=lineT<=.3?0:Math.min(1,(lineT-.3)/.7);
     // 元の音: 線までは普通に育ち、線を超えたらそこで足止め。3割までは据え置きで、
     // そこから9割の地点でゼロになる。残りの1割は歌の音量だけが動く。
-    const lineSend=amt=>{
-      const frozen=Math.min(amt,CHAOS_FILTER_MAX_RADIUS),tt=lineT(amt);
-      return frozen*(tt<=.3?1:Math.max(0,1-(tt-.3)/.6));
-    };
-    const amt={};for(const d of CHAOS_DIRS)amt[d]=weights[d]*radius;
+    const sendLevel=Math.min(radius,CHAOS_FILTER_MAX_RADIUS)*(lineT<=.3?1:Math.max(0,1-(lineT-.3)/.6));
     // 4方角とも同じ仕組み。上下はハイパス/ローパス、左右は従来のエフェクトのまま。
     for(const d of CHAOS_DIRS){
-      chaosNodes.sends[d].gain.setTargetAtTime(lineSend(amt[d]),t,.05);
-      chaosNodes.melodyGains[d].gain.setTargetAtTime(melodyFade(amt[d]),t,.08);
+      chaosNodes.sends[d].gain.setTargetAtTime(weights[d]*sendLevel,t,.05);
+      chaosNodes.melodyGains[d].gain.setTargetAtTime(weights[d]*melodyLevel,t,.08);
     }
     // 上下だけは開閉ぶんに応じてフィルターそのものも動かす。カットオフが動くことで
-    // DJのフィルターノブのような「開く/閉じる」感触が出る。線で全開に達する。
-    const sweep=a=>Math.min(1,a/CHAOS_FILTER_MAX_RADIUS);
-    chaosNodes.societyHP.frequency.setTargetAtTime(20+Math.pow(sweep(amt.society),1.4)*4500,t,.05);
-    chaosNodes.tokioLP.frequency.setTargetAtTime(18000-Math.pow(sweep(amt.tokio),1.4)*17200,t,.05);
+    // DJのフィルターノブのような「開く/閉じる」感触が出る。線でちょうど全開に達する。
+    const sweep=Math.min(1,radius/CHAOS_FILTER_MAX_RADIUS);
+    chaosNodes.societyHP.frequency.setTargetAtTime(20+Math.pow(sweep,1.4)*4500,t,.05);
+    chaosNodes.tokioLP.frequency.setTargetAtTime(18000-Math.pow(sweep,1.4)*17200,t,.05);
     // grainDry(粒の生っぽさ)は方向を問わず radius だけで開く常時ブリードなので、
     // 縁(歌だけのはずのゾーン)でも粒立った原音が薄く漏れ続けてしまう。
     // 歌が優勢になった分だけここも一緒にミュートし、縁では本当に歌だけにする。
-    const dominance=Math.min(1,Math.max(...CHAOS_DIRS.map(d=>melodyFade(amt[d]))));
-    chaosNodes.grainDry.gain.setTargetAtTime(radius*.55*(1-dominance),t,.05);
+    chaosNodes.grainDry.gain.setTargetAtTime(radius*.55*(1-melodyLevel),t,.05);
   }
   const radiusExcess=Math.max(0,(radius-.6)/.4);
   let activeLabel="-",activeColor=null,maxHell=0;
