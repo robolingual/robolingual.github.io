@@ -1604,7 +1604,10 @@ document.querySelectorAll(".mode").forEach(modeEl=>{
     id=e.pointerId;
     startX=e.clientX;
     startV=Number(slider.value)||0;
-    span=Math.max(1,slider.closest(".pan-knob").getBoundingClientRect().width); // ノブ1個ぶんの幅で全域を動かす
+    // ノブ1個ぶんの幅で全域を動かす。テンポパネルと同じく、レイアウトが動いている最中は
+    // 実測が0で返ることがあり、そのまま使うと指1pxでPANが端まで飛ぶので下限を設ける。
+    const knobW=slider.closest(".pan-knob").getBoundingClientRect().width;
+    span=knobW>20?knobW:76; // 76pxは .pan-knob の設計値
     try{band.setPointerCapture(id)}catch(_){}
     e.preventDefault();
   });
@@ -2767,7 +2770,14 @@ document.querySelectorAll(".speed-labels span[data-rate]").forEach(el=>{
     startY=e.clientY;
     startV=Number(speedSlider.value)||0;
     movedPx=0;
-    span=Math.max(1,speedSlider.getBoundingClientRect().height); // 目盛りと1:1で動かす
+    // 目盛りと1:1で動かすため、スライダーの実測の高さで「1pxあたりの移動量」を決める。
+    // ただし実測をそのまま信じてはいけない。レイアウトが動いている最中(BPMを打った直後、
+    // ソフトキーボードの開閉、画面回転など)は0や極小で返ることがあり、そうなると
+    // 1pxあたりの移動量が跳ね上がって、指を2px動かしただけでテンポが端まで飛ぶ。
+    // 実測でその状態を再現すると、2pxで19半音(3.0倍)ずれた。触った覚えのないまま
+    // 全パッドの音程が上がる、という再現しにくい不具合になる。下限を設けて塞ぐ。
+    const measured=speedSlider.getBoundingClientRect().height;
+    span=measured>40?measured:(panel.getBoundingClientRect().height||300);
     try{panel.setPointerCapture(id)}catch(_){}
     e.preventDefault();
   });
