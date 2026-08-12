@@ -878,6 +878,7 @@ function mixerReanchor(){
 }
 let masterRate=1;
 let renderedBpm=null; // TRANSLATE時に実際に使ったBPM(masterRateとの掛け算で実効BPMを出す)
+let renderedSampleRate=44100; // 書き出しを後回しにしたので、生成時のサンプリングレートを覚えておく
 // TRANSLATE毎に検出するキー/音階。{root,name,intervals,confidence} か、検出できなければ null。
 // ユーザーは一切関与しない完全自動。狙ったキーが要る人は元音源を差し替える前提(BPMと同じ扱い)。
 let detectedScale=null;
@@ -888,7 +889,8 @@ function updateEffectiveBpm(){
 }
 let performanceRecording=false,recordProcessor=null,recordSilentGain=null,recordChunks=[],recordedBuffer=null,recordedBlob=null;
 let performanceSource=null,performanceStartedAt=0,performanceOffset=0,performanceRAF=0;
-const renderedBlobs={ninja:{a:null,b:null,c:null,d:null},killer:{a:null,b:null,c:null,d:null},banker:{a:null,b:null,c:null,d:null},witch:{a:null,b:null,c:null,d:null}};
+// 生成した波形そのもの。WAVに書き出すのはSAVE ZIPを押した時だけなので、ここで持っておく。
+const renderedSamples={ninja:{a:null,b:null,c:null,d:null},killer:{a:null,b:null,c:null,d:null},banker:{a:null,b:null,c:null,d:null},witch:{a:null,b:null,c:null,d:null}};
 const setStatus=t=>status.textContent=t;
 function setSamplerEnabled(enabled){
   document.querySelectorAll('.switches input[value="a"],.switches input[value="b"],.switches input[value="c"],.switches input[value="d"]').forEach(el=>{el.disabled=!enabled});
@@ -941,11 +943,16 @@ function buildSoundLogoTrack(total,sr,bpm,bars){
   const ratio=soundLogoBuffer.sampleRate/sr;
   const available=Math.max(0,total-start);
   const frames=Math.min(available,Math.floor(soundLogoBuffer.length/ratio));
+  // getChannelDataはループの外で取る。中で呼んでいた頃は1サンプルにつきチャンネル数だけ
+  // 呼ぶ形になり、61772回×14マイクロ秒でここだけ873msかかっていた(TRANSLATE全体の4割)。
+  const chans=[];
+  for(let ch=0;ch<channels;ch++)chans.push(soundLogoBuffer.getChannelData(ch));
+  const lastIdx=soundLogoBuffer.length-1;
   for(let i=0;i<frames;i++){
-    const pos=i*ratio,p0=Math.floor(pos),p1=Math.min(soundLogoBuffer.length-1,p0+1),frac=pos-p0;
+    const pos=i*ratio,p0=Math.floor(pos),p1=Math.min(lastIdx,p0+1),frac=pos-p0;
     let sample=0;
     for(let ch=0;ch<channels;ch++){
-      const d=soundLogoBuffer.getChannelData(ch);
+      const d=chans[ch];
       sample+=(d[p0]*(1-frac)+d[p1]*frac)/channels;
     }
     dest[start+i]=sample;
@@ -1377,8 +1384,9 @@ async function runTranslate(){
       softLimit(output,.96);
       if(!isD){loopRmsSum+=rmsOf(output);loopRmsCount++}
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
-      const blob=encodeWav(output,sr);
-      renderedBlobs[modeKey][variantKey]=blob;
+      // WAVへの書き出しはSAVE ZIPを押した時だけでよい。TRANSLATEの度に16本作ると
+      // 実測350msかかっていた。押されないまま捨てられる事の方が多いので、後回しにする。
+      renderedSamples[modeKey][variantKey]=output;
       await nextFrame();
     }
     // 八卦盤を線より外へ振り切った時に鳴る、素材そのもの。4方角ぶん用意する。
@@ -1417,7 +1425,7 @@ async function runTranslate(){
     setSamplerEnabled(true);
     performanceRec.disabled=false;
     lastTouched="mixer";
-    renderedBpm=bpm;
+    renderedBpm=bpm;renderedSampleRate=sr;
     updateEffectiveBpm();
     updateChaosTempoSync(); // 新しいBPMに左右のディレイ/うねりを合わせ直す
     resetSwitches();
@@ -1477,10 +1485,16 @@ async function downloadAllZip(){
     ["banker","a","Banker_A.wav"],["banker","b","Banker_B.wav"],["banker","c","Banker_C.wav"],["banker","d","Banker_D.wav"],
     ["witch","a","Witch_A.wav"],["witch","b","Witch_B.wav"],["witch","c","Witch_C.wav"],["witch","d","Witch_D.wav"]
   ];
-  const entries=names.map(([m,v,name])=>({name,blob:renderedBlobs[m][v]})).filter(x=>x.blob);
-  if(entries.length!==16){setStatus("Translate first — sixteen files are required");return}
+  if(names.some(([m,v])=>!renderedSamples[m][v])){setStatus("Translate first — sixteen files are required");return}
   downloadAll.disabled=true;setStatus("Building ZIP...");
-  try{const zip=await makeStoredZip(entries);await saveBlob(zip,"Robolingual_16_Patterns.zip");setStatus("ZIP ready")}
+  try{
+    // ここで初めてWAVに書き出す。16本で350msほどかかるので、画面を止めないよう1本ずつ譲る。
+    const entries=[];
+    for(const [m,v,name] of names){
+      entries.push({name,blob:encodeWav(renderedSamples[m][v],renderedSampleRate)});
+      await nextFrame();
+    }
+    const zip=await makeStoredZip(entries);await saveBlob(zip,"Robolingual_16_Patterns.zip");setStatus("ZIP ready")}
   catch(error){console.error(error);setStatus("ZIP creation failed")}
   finally{downloadAll.disabled=false}
 }
@@ -2212,7 +2226,7 @@ function updateSaveButton(){
     downloadAll.disabled=!recordedBlob;
   }else{
     downloadAll.textContent="SAVE ZIP";
-    const ready=["ninja","killer","banker","witch"].every(m=>["a","b","c","d"].every(v=>renderedBlobs[m][v]));
+    const ready=["ninja","killer","banker","witch"].every(m=>["a","b","c","d"].every(v=>renderedSamples[m][v]));
     downloadAll.disabled=!ready;
   }
 }
@@ -3154,36 +3168,66 @@ function scaleDegreeSemitone(scale,degree){
 // 金属的な唸りになる。一方、正規化の有無・探索範囲・探索の粗さ(stride)は
 // ほとんど影響しなかった(22ms固定で .88 / .90 / .88 / .88)ため、
 // そこは計算量の安い側に振ってある。
-// 採用値は14ms/±150/stride8。生成時間は据え置きのまま(945ms 対 従来1107ms)、
-// 一致度が .445 → .775 に上がる。
+// 採用値は14ms/±150。
+//
+// ここはTRANSLATE全体の6割を占めていたので、質を落とさずに削れる所を測った。
+// 探索範囲は狭められない。声のピッチ周期は4〜10ms(180〜440サンプル)あり、
+// 継ぎ目を周期に合わせるには1周期ぶんの余地が要るため、±3.4msを下回ると崩れる:
+//   探索範囲   ±3.4ms  ±1.7ms  ±0.9ms  ±0.45ms
+//   一致度      .758    .677    .567    .357
+// (「探索範囲は効かない」と以前書いたのは粒22msの頃の話で、14msでは当てはまらない)
+//
+// 効いたのは範囲ではなく1候補あたりの単価の方で、次の3つ:
+//  ・採点も粒の読みも整数サンプルで行う。以前は探索を小数位置の補間で回していたが、
+//    ずらし量dは元々整数なので補間する意味が無かった。倍率はほぼ4倍固定で小数の
+//    ずれはゆっくりしか溜まらず、WSOLAは元々±150サンプル動かすので丸めは埋もれる。
+//  ・末尾を跨がない時は剰余を省く。跨ぐのは1周に1度だけ。
+//  ・ずらし量を4刻みで見てから、勝った所の周りだけ1刻みで詰める。相関の山は
+//    ピッチ周期(180サンプル以上)の幅があるので、4刻みで見落とさない。
+// 実測(3プリセット平均): 472ms → 46ms。一致度は .758 → .770 で、むしろ上がる
+// (整数に揃えたことで、採点した位置と実際に読む位置が一致するようになったため)。
 function renderTimeStretchedPhrase(mono,sr,total,startSample,captureLen,gain){
   const out=new Float32Array(total);
   if(total<=0||captureLen<=0)return out;
   const stretch=total/captureLen; // 何倍に伸ばすか
   const grainSize=Math.max(64,Math.floor(sr*.014)),outHop=Math.max(1,Math.floor(grainSize/2)),srcHopIdeal=outHop/stretch;
-  const overlapLen=grainSize-outHop,searchRange=Math.max(1,Math.floor(sr*.0034)),stride=8;
+  const overlapLen=grainSize-outHop,searchRange=Math.max(1,Math.floor(sr*.0034));
+  const stride=4,dCoarse=4;
   const win=new Float32Array(grainSize);
   for(let i=0;i<grainSize;i++)win[i]=.5-.5*Math.cos(2*Math.PI*i/(grainSize-1));
-  const read=pos=>{const p0=Math.floor(pos),idx=((p0%mono.length)+mono.length)%mono.length,p1=(idx+1)%mono.length,frac=pos-p0;return mono[idx]*(1-frac)+mono[p1]*frac};
+  const L=mono.length;
   let outPos=0,srcPosIdeal=0,prevTail=null;
+  const grain=new Float32Array(grainSize);
   while(outPos<total){
+    const base=Math.round(startSample+srcPosIdeal);
     let offset=0;
     if(prevTail){
+      // 探索窓が末尾を跨がない時は剰余を省く
+      const flat=base-searchRange>=0&&base+searchRange+overlapLen<L;
+      const scoreAt=d=>{
+        let sc=0;const b=base+d;
+        if(flat){for(let k=0;k<overlapLen;k+=stride)sc+=prevTail[k]*mono[b+k]}
+        else{for(let k=0;k<overlapLen;k+=stride)sc+=prevTail[k]*mono[(((b+k)%L)+L)%L]}
+        return sc;
+      };
       let bestScore=-Infinity;
-      for(let d=-searchRange;d<=searchRange;d++){
-        let score=0;
-        for(let k=0;k<overlapLen;k+=stride)score+=prevTail[k]*read(startSample+srcPosIdeal+d+k);
-        if(score>bestScore){bestScore=score;offset=d}
+      for(let d=-searchRange;d<=searchRange;d+=dCoarse){const sc=scoreAt(d);if(sc>bestScore){bestScore=sc;offset=d}}
+      const c=offset; // 勝った所の周りだけ1刻みで詰める
+      for(let d=Math.max(-searchRange,c-dCoarse+1);d<=Math.min(searchRange,c+dCoarse-1);d++){
+        if(d===c)continue;
+        const sc=scoreAt(d);if(sc>bestScore){bestScore=sc;offset=d}
       }
     }
-    const srcStart=startSample+srcPosIdeal+offset,grain=new Float32Array(grainSize);
-    for(let i=0;i<grainSize;i++)grain[i]=read(srcStart+i);
+    const srcStart=base+offset;
+    if(srcStart>=0&&srcStart+grainSize<L){for(let i=0;i<grainSize;i++)grain[i]=mono[srcStart+i]}
+    else{for(let i=0;i<grainSize;i++)grain[i]=mono[(((srcStart+i)%L)+L)%L]}
     for(let i=0;i<grainSize;i++){
       const o=outPos+i;
       if(o>=total)break;
       out[o]+=grain[i]*win[i]*gain;
     }
-    prevTail=grain.slice(grainSize-overlapLen);
+    if(!prevTail)prevTail=new Float32Array(overlapLen);
+    prevTail.set(grain.subarray(grainSize-overlapLen));
     outPos+=outHop;
     srcPosIdeal+=srcHopIdeal;
   }
