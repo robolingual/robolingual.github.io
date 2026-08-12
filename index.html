@@ -805,16 +805,42 @@ function rmsOf(arr){let s=0;for(let i=0;i<arr.length;i++)s+=arr[i]*arr[i];return
 // RMSはさほど削らないので、丸めてから合わせ直せば狙いの高さに乗る。数回で収まる。
 // 上げ幅は青天井にせず、素材が小さすぎる時にノイズだけ持ち上がるのを防ぐ。
 function normalizeRmsTo(arr,target){
-  if(target<=0)return;
+  if(target<=0)return arr;
   for(let pass=0;pass<4;pass++){
     const cur=rmsOf(arr);
-    if(cur<=1e-6)return;
+    if(cur<=1e-6)return arr;
     const gain=Math.min(6,target/cur);
     for(let i=0;i<arr.length;i++)arr[i]*=gain;
     let peak=0;for(let i=0;i<arr.length;i++)peak=Math.max(peak,Math.abs(arr[i]));
-    if(peak<=.98)return;
+    if(peak<=.98)return arr;
     for(let i=0;i<arr.length;i++)arr[i]=Math.tanh(arr[i]);
   }
+  return arr;
+}
+// 上下の歌は、この先でハイパス/ローパスを通ってから出る。通る量は素材の中身次第で
+// 大きく変わるので、ここで「通した後」を測って揃えておく。盤側の設定と同じ
+// 3段・同じカットオフで測るため、実際に鳴る時の音量とずれない。
+// 持ち上げ幅には上限を置く。低い成分がほとんど無い素材で青天井に上げると、
+// わずかな残りだけが不自然に大きくなるため。
+function normalizeThroughFilter(arr,sr,kind,target){
+  // 測るだけなので間引いて軽くする。判定に使う350Hz/2kHzは1/4に落としても十分残る。
+  // 全長にかけるとTRANSLATEが2.7秒から5.3秒に伸びたため。
+  const probeSr=sr/4,probe=decimateForPitch(arr,sr,probeSr);
+  // 実際に鳴る時はビカッド3段(36dB/oct)。こちらの簡易フィルターは1段6dB/octなので、
+  // 6回かけて傾きを合わせる。3回で測っていた時は傾きが半分で、通る量を多く見積もり、
+  // 素材によって上が7.3dBも振れていた。
+  for(let i=0;i<6;i++){
+    if(kind==="hp")highPassInPlace(probe,0,probe.length,probeSr,2000);
+    else lowPassInPlace(probe,0,probe.length,probeSr,350);
+  }
+  const after=rmsOf(probe);
+  if(after<=1e-6||target<=0)return arr;
+  // 上限を12倍にしていた時、低い成分の少ない素材ではここに当たって届かず、
+  // 下の音量が素材によって8.7dB振れていた。tanhで頭を丸めながら持ち上げるので、
+  // 大きく上げても波形は壊れない(この後フィルターで倍音は削られる)。
+  const gain=Math.min(40,target/after);
+  for(let i=0;i<arr.length;i++)arr[i]=Math.tanh(arr[i]*gain);
+  return arr;
 }
 // 5度上を重ねたハーモナイザー版を作る。完全5度(7半音)はSCALE_TEMPLATES全種に共通の
 // 音程なので、どのキーで検出されても外れない。読み進む速さを上げるだけの簡易な作りで、
@@ -1375,14 +1401,17 @@ async function runTranslate(){
       const startB=anchors[Math.floor(melodyRng()*anchors.length)].start;
       const melA=renderStretchedLoop(mono,sr,bpm,total,startA,.9);
       const melB=renderStretchedLoop(mono,sr,bpm,total,startB,.9);
-      const melZ=addFifthAbove(melB); // 左はハーモナイザー。重ねたぶん上がるので個別に測る
       const reference=(loopRmsCount?loopRmsSum/loopRmsCount:.08)*CHAOS_MELODY_LEVEL;
-      for(const arr of [melA,melB,melZ])normalizeRmsTo(arr,reference);
+      // 方角ごとに別の実体を持たせ、「その先のフィルターを通った後」で音量を揃える。
+      // 上下はフィルター越しに出るので、通る量が素材の中身次第で大きく変わる。
+      // 固定の係数で揃えようとしたが、同じ設定でも下が -8.4dB 〜 -21.4dB と
+      // 13dBも振れた(素材に低い成分がどれだけあるかで決まるため)。
+      // ここで通した後を測って合わせれば、素材によらず一定になる。
       renderedChaosMelody={
-        society:toAudioBuffer(melA,sr),
-        paraiso:toAudioBuffer(melA,sr),
-        tokio:toAudioBuffer(melB,sr),
-        zion:toAudioBuffer(melZ,sr),
+        society:toAudioBuffer(normalizeThroughFilter(melA.slice(),sr,"hp",reference),sr),
+        paraiso:toAudioBuffer(normalizeRmsTo(melA,reference),sr),
+        tokio:toAudioBuffer(normalizeThroughFilter(melB.slice(),sr,"lp",reference*1.4),sr),
+        zion:toAudioBuffer(normalizeRmsTo(addFifthAbove(melB),reference),sr),
       };
     }
     setSamplerEnabled(true);
@@ -4268,8 +4297,15 @@ const CHAOS_FILTER_MAX_RADIUS=.35;
 //
 // 係数は、歌だけを鳴らして8小節ループを丸ごと跨いで平均した値から引いた。
 // 短い窓(2秒程度)で測るとループの静かな所を拾って値が大きく振れるので当てにならない
-// (実際それで一度かけ過ぎた)。4方角の平均 -14.3dB へ揃えてある。
-const CHAOS_MELODY_MAKEUP={society:7.52,tokio:6.24,paraiso:1.69,zion:1.02};
+// (実際それで一度かけ過ぎた)。
+// 上下は生成時に「フィルターを通した後」で揃えてあるので、ここは素通しでよい
+// (実行時の固定係数では素材による振れを吸収できず、下が13dBも動いた)。
+// 左右は素通しで出るぶん、生成時の正規化がそのまま効く。
+// 生成時の正規化で大半は揃うが、測定用の簡易フィルターには共振が無いぶん、
+// 上は実際より通る量を少なく見積もって持ち上げすぎる(3プリセットの実測平均で-6.8dB、
+// 他が-14.6dB前後なのに対し7dB大きく、歪みも出た)。そのぶんをここで戻す。
+// 右はリバーブで時間方向に散るぶん実効の音量が下がるので、逆に足す。
+const CHAOS_MELODY_MAKEUP={society:.44,tokio:1,paraiso:1.8,zion:1};
 
 const CHAOS_GRAIN_PARAMS={
   society:{size:.08, rate:.85, jitter:.35, density:16, wobble:.03},
@@ -4316,7 +4352,9 @@ function getChaosBus(){
   const ctx=getAudioContext();
   chaosBus=ctx.createGain();chaosBus.gain.value=1;
   chaosOut=ctx.createGain();chaosOut.gain.value=1;
-  chaosOut.connect(ctx.destination);
+  // 出音の最後で頭を丸める。ここまでは各所が足し合わさるだけで歯止めが無く、
+  // 歌でも地獄ゾーンでも積み上がれば普通に振り切れていた。
+  chaosOut.connect(makeSoftClip(ctx)).connect(ctx.destination);
 
   // ---- live capture ring buffer (mono, 6秒) : ここからグレイン/亡霊素材を拾う ----
   captureLen=Math.floor(ctx.sampleRate*6);
@@ -4354,20 +4392,19 @@ function getChaosBus(){
   // 粒(postGranular)ではなくchaosBusの生音を直接タップする。振り切って痩せていく代わりに、
   // 線より外では、伸ばした素材(renderedChaosMelody)を同じフィルター越しに混ぜる。
   const societySend=ctx.createGain();societySend.gain.value=0; // 開閉はchaosUpdateの共通ループが担当
-  const societyHP=ctx.createBiquadFilter();societyHP.type="highpass";societyHP.frequency.value=20;societyHP.Q.value=.8;
+  const societyHP=makeFilterCascade(ctx,"highpass",3,20);
   const societyMelodyGain=ctx.createGain();societyMelodyGain.gain.value=0; // しっかり振り切った時だけ上がる
   const societyOut=ctx.createGain();societyOut.gain.value=.9;
-  chaosBus.connect(societySend).connect(societyHP);
-  societyMelodyGain.connect(societyHP);
-  // 切る位置そのものをゆっくり揺らす。Qを4まで上げてあるので切り際が鳴っており、
-  // そこが動くと共振点が移動して「ヒュゥゥ」と喋るように聞こえる。音を足さず、
-  // 既にある共振を動かすだけ。周波数のパラメータへ直接足し込む形で繋ぐ。
+  chaosBus.connect(societySend).connect(societyHP.input);
+  societyMelodyGain.connect(societyHP.input);
+  // 切る位置そのものをゆっくり揺らす。切り際に共振があるので、そこが動くと
+  // 「ヒュゥゥ」と喋るように聞こえる。音を足さず、既にある共振を動かすだけ。
   // 深さは線より外でだけ効かせる(chaosUpdateがmelodyLevelに応じて開く)。
   // 手前で効かせると、開閉の途中でカットオフが暴れて操作感が濁るため。
   const societySwirl=ctx.createOscillator();societySwirl.frequency.value=.06;
   const societySwirlDepth=ctx.createGain();societySwirlDepth.gain.value=0;
-  societySwirl.connect(societySwirlDepth).connect(societyHP.frequency);societySwirl.start();
-  societyHP.connect(societyOut).connect(chaosOut);
+  societySwirl.connect(societySwirlDepth);societyHP.modulate(societySwirlDepth);societySwirl.start();
+  societyHP.output.connect(societyOut).connect(chaosOut);
 
   // ---- PARAISO: ピッチ上げ、ディレイ+長く煌めくリバーブ、終わらない安らぎ ----
   const paraisoSend=ctx.createGain();paraisoSend.gain.value=0;
@@ -4392,10 +4429,10 @@ function getChaosBus(){
 
   // ---- TOKIO(下=ローパス): SOCIETYと対の、こもっていく方向 ----
   const tokioSend=ctx.createGain();tokioSend.gain.value=0;
-  const tokioLP=ctx.createBiquadFilter();tokioLP.type="lowpass";tokioLP.frequency.value=18000;tokioLP.Q.value=.8;
+  const tokioLP=makeFilterCascade(ctx,"lowpass",3,18000);
   const tokioMelodyGain=ctx.createGain();tokioMelodyGain.gain.value=0;
   const tokioOut=ctx.createGain();tokioOut.gain.value=.9;
-  chaosBus.connect(tokioSend).connect(tokioLP);
+  chaosBus.connect(tokioSend).connect(tokioLP.input);
   // 拍ごとに音量を凹ませる。伸びた低音は動きが無いと存在を忘れられるが、
   // 拍の頭で沈めて拍のあいだに戻すと、持続音が拍で呼吸しはじめる。
   // のこぎり波は1周のあいだ谷から山へ登って頭で落ちるので、その形がそのまま使える。
@@ -4404,8 +4441,8 @@ function getChaosBus(){
   const tokioPumpOsc=ctx.createOscillator();tokioPumpOsc.type="sawtooth";tokioPumpOsc.frequency.value=1.83;
   const tokioPumpDepth=ctx.createGain();tokioPumpDepth.gain.value=0;
   tokioPumpOsc.connect(tokioPumpDepth).connect(tokioPump.gain);tokioPumpOsc.start();
-  tokioMelodyGain.connect(tokioPump).connect(tokioLP);
-  tokioLP.connect(tokioOut).connect(chaosOut);
+  tokioMelodyGain.connect(tokioPump).connect(tokioLP.input);
+  tokioLP.output.connect(tokioOut).connect(chaosOut);
 
   // ---- ZION: 荘厳、パイプオルガン的持続、コーラス+超ロングリバーブ ----
   const zionSend=ctx.createGain();zionSend.gain.value=0;
@@ -4504,10 +4541,45 @@ function chaosImpulse(ctx,seconds,decay){
   for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);for(let i=0;i<len;i++){const t=i/len;d[i]=(Math.random()*2-1)*Math.pow(1-t,decay)}}
   return buf;
 }
+// 出音の最後に置く頭打ち。カットオフを中音域へ寄せたぶん通る量が増え、実測で波形の
+// ピークが1.04〜1.89と振り切れていた。音量を落として避けると「下が足りない」に戻るので、
+// 頭だけ丸めて両立させる。
+// 0.7までは何もしない(普段の音量はそのまま通る)。そこから上だけ寝かせて1.0を超えさせない。
+// tanhをそのまま使うと中くらいの信号まで持ち上げてしまい、かえってピークが増える
+// (実際それで一度失敗した)ので、素通しの区間を明示的に持つ形にしてある。
+function makeSoftClip(ctx){
+  const n=4096,curve=new Float32Array(n),knee=.7;
+  for(let i=0;i<n;i++){
+    const x=i*2/(n-1)-1,a=Math.abs(x);
+    const y=a<=knee?a:knee+(1-Math.exp(-(a-knee)*3.2))*.27;
+    curve[i]=Math.sign(x)*y;
+  }
+  const ws=ctx.createWaveShaper();ws.curve=curve;ws.oversample="2x";
+  return ws;
+}
 function chaosDistCurve(amount){
   const n=4096,curve=new Float32Array(n);
   for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=Math.tanh(x*amount)/Math.tanh(amount)}
   return curve;
+}
+// フィルターを重ねて、実際に切れる急峻さを出す。1段(12dB/oct)では緩すぎて、
+// ローパスを180Hzまで下げても1.4kHzが-36dBしか落ちず、声がそのまま残っていた。
+// 3段で36dB/octになり、同じ位置で-108dBまで落ちる。
+// 共振は先頭の1段だけに持たせる。全段に載せると山が3段ぶん膨れて痛くなる。
+function makeFilterCascade(ctx,type,stages,freq){
+  const nodes=[];
+  for(let i=0;i<stages;i++){
+    const f=ctx.createBiquadFilter();
+    f.type=type;f.frequency.value=freq;f.Q.value=i===0?.9:.707;
+    if(i>0)nodes[i-1].connect(f);
+    nodes.push(f);
+  }
+  return{
+    input:nodes[0],output:nodes[stages-1],nodes,
+    setFreq(v,t){for(const n of nodes)n.frequency.setTargetAtTime(v,t,.05)},
+    setResonance(q,t){nodes[0].Q.setTargetAtTime(q,t,.05)},
+    modulate(src){for(const n of nodes)src.connect(n.frequency)},
+  };
 }
 function chaosChorus(ctx,{voices=3,baseDelay=.012,depth=.004,rate=.25}={}){
   const input=ctx.createGain(),output=ctx.createGain();
@@ -4694,11 +4766,15 @@ function chaosUpdate(x,y){
     //  ・共振(Q)を0.7→4まで連れて上げる。DJのフィルターの、閉じる手前で
     //    ぐっと鳴く感じはここから出る。
     const sweep=Math.min(1,radius/CHAOS_FILTER_MAX_RADIUS);
-    chaosNodes.societyHP.frequency.setTargetAtTime(20*Math.pow(8000/20,sweep),t,.05);
-    chaosNodes.tokioLP.frequency.setTargetAtTime(18000*Math.pow(180/18000,sweep),t,.05);
-    const q=.7+sweep*3.3;
-    chaosNodes.societyHP.Q.setTargetAtTime(q,t,.05);
-    chaosNodes.tokioLP.Q.setTargetAtTime(q,t,.05);
+    // 行き着く先は中音域の内側に取る。以前はハイパス8kHz/ローパス180Hzと外へ振り切って
+    // いたが、上は倍音しか残らずシャリシャリ、下は痩せて音量が足りなかった。
+    // ハイパスは中音域の下側(2kHz)まで、ローパスは中音域の上側を落として350Hzまで。
+    // 3段(36dB/oct)で切るので、この位置でも中音域は実際に消える。
+    chaosNodes.societyHP.setFreq(20*Math.pow(2000/20,sweep),t);
+    chaosNodes.tokioLP.setFreq(18000*Math.pow(350/18000,sweep),t);
+    const q=.9+sweep*2.1; // 共振は先頭の1段だけに載る
+    chaosNodes.societyHP.setResonance(q,t);
+    chaosNodes.tokioLP.setResonance(q,t);
     // grainDry(粒の生っぽさ)は方向を問わず radius だけで開く常時ブリードなので、
     // 縁(歌だけのはずのゾーン)でも粒立った原音が薄く漏れ続けてしまう。
     // 歌が優勢になった分だけここも一緒にミュートし、縁では本当に歌だけにする。
