@@ -3476,6 +3476,13 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
      highPassInPlace(out,base,barEnd-base,sr,160);
      continue;
    }
+   // ハイハットの刻みでグルーヴを作る小節。硬いA は3-3-2(マシンガンと地続き)、
+   // 丸いB はジャズのライドが合うので、キャラごとに寄せて選ぶ。
+   if(rng()<.18){
+     const groove=KILLER_HIHAT_GROOVES[hard?(rng()<.75?1:0):(rng()<.75?0:1)];
+     renderKillerHihatBar(out,src,base,beat,slices,sr,rng,groove,barEnd-base);
+     continue;
+   }
    // フロウ(息継ぎがリズムになる詰め方)。4小節周期でAABA的に変化させる。
    if(rng()<.32){
      const variant=["roll","roll","land","release"][b%4];
@@ -3524,6 +3531,62 @@ function makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,hard){
    }
  }
  return out
+}
+// KILLER固有: ハイハットで刻みを作るグルーヴ。この楽器に音源は無いので、
+// ハイハットも素材の無声部(子音)から作る。1オクターブ上げて高い所だけ残すと
+// 「ツッ」に近い粒になる。刻みは全部同じスライスで通す(同じ語ならば同じ音)。
+// 声は刻みには乗せず、アクセントの位置にだけ重ねる。役割を分けることで、
+// 埋めた刻みの中でアクセントが立つ。
+const KILLER_HIHAT_GROOVES=[
+  // 「ちーちっち」ジャズのライド。2拍ひと組。1拍目が伸び、2拍目の裏は3連の位置
+  // (1.667拍)へ寄ってハネる。「っ」は休み。全部「ち」なので、声は伸ばす頭だけ。
+  {cell:2,swing:true,hits:[{at:0,long:true,voice:true},{at:1},{at:5/3}]},
+  // 「ちちた ちちた ちた」16分8個を3-3-2。「た」が各組の終わりに来るので、
+  // そこへ声を置くと区切りが鳴り分かれる。4拍の中に3を配置する形の一種で、
+  // 刻み自体は等間隔のままなのに1ユニットが速くなったように聞こえる。
+  {cell:2,swing:false,hits:[{at:0},{at:.25},{at:.5,voice:true},{at:.75},
+                            {at:1},{at:1.25,voice:true},{at:1.5},{at:1.75,voice:true}]},
+];
+// 刻みと声の音量比。刻みが主役なので、声に埋もれない所まで持ち上げる。
+// 固定のゲインで書いた時は素材次第で刻みが声より12.8〜15.6dB下に沈み、
+// グルーヴがまるで聞こえなかった(子音は短くて高域を削るぶん、同じゲインでも小さくなる)。
+// 測って比で合わせれば素材によらない。-5dBは、刻みが土台として聞こえたうえで
+// アクセントの声が上に立つ位置。
+const KILLER_HIHAT_TO_VOICE=.56; // -5dB
+// 小節全体の音量。刻みは短くて高域を削るぶん、そのまま置くと普通のKILLERの小節より
+// 6〜12dB痩せて、そこだけ抜けたように聞こえた。使っている声のスライス自身の音量を
+// 基準にすれば、素材の大小に自動で追随する。
+const KILLER_HIHAT_BAR_LEVEL=.97;
+function renderKillerHihatBar(out,src,base,beat,slices,sr,rng,groove,barLen){
+  const hat=pickPercussiveSlice(slices,rng);
+  const voice=pickWeightedSlice(slices,rng,false);
+  // 刻みと声は別々の器に描く。まとめてハイパスすると声の芯まで無くなるのと、
+  // あとで比を測って合わせるため。
+  const hatLayer=new Float32Array(barLen),voiceLayer=new Float32Array(barLen);
+  const short=Math.max(Math.floor(sr*.008),Math.floor(beat*.05));
+  const reps=Math.floor(4/groove.cell);
+  for(let rep=0;rep<reps;rep++)for(const h of groove.hits){
+    const at=Math.floor((rep*groove.cell+h.at)*beat);
+    if(at>=barLen)continue;
+    const len=Math.min(h.long?Math.floor(beat*.4):short,barLen-at);
+    // 「ちー」の伸びは音量ではなく長さで出す。ここを大きくすると、小節の音量を
+    // 揃えた時に伸ばす所だけ突出して波形のピークが0.88まで出た。
+    renderOneShot(hatLayer,src,at,hat.start,len,.6+rng()*.1,2); // 1オクターブ上=高域へ寄せる
+    if(h.voice)renderOneShot(voiceLayer,src,at,voice.start,
+      Math.min(voice.length,Math.floor(beat*(h.long?.5:.3)),barLen-at),.58+rng()*.1);
+  }
+  for(let pass=0;pass<2;pass++)highPassInPlace(hatLayer,0,barLen,sr,3500);
+  const hr=rmsOf(hatLayer),vr=rmsOf(voiceLayer);
+  const hs=(hr>1e-6&&vr>1e-6)?Math.min(12,vr*KILLER_HIHAT_TO_VOICE/hr):1;
+  let sum=0;for(let i=0;i<barLen;i++){const v=hatLayer[i]*hs+voiceLayer[i];sum+=v*v}
+  const cur=Math.sqrt(sum/barLen);
+  const ref=rmsOf(src.subarray(voice.start,Math.min(src.length,voice.start+Math.min(voice.length,Math.floor(beat)))));
+  let bs=(cur>1e-6&&ref>1e-6)?Math.min(6,ref*KILLER_HIHAT_BAR_LEVEL/cur):1;
+  // 音量を揃えた結果このあとのsoftLimitに当たると、小節1つのために16パッド全体が
+  // 下がってしまう。頭だけここで抑える。
+  let pk=0;for(let i=0;i<barLen;i++)pk=Math.max(pk,Math.abs(hatLayer[i]*hs+voiceLayer[i]));
+  if(pk*bs>.85)bs=.85/pk;
+  for(let i=0;i<barLen;i++){const d=base+i;if(d>=out.length)break;out[d]+=(hatLayer[i]*hs+voiceLayer[i])*bs}
 }
 function makeKillerA(src,sr,bpm,bars,total,attackList,rng,slicePool){return makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,true)}
 function makeKillerB(src,sr,bpm,bars,total,attackList,rng,slicePool){return makeKillerCore(src,sr,bpm,bars,total,attackList,rng,slicePool,false)}
@@ -3782,11 +3845,11 @@ function makeBankerD(src,sr,bpm,bars,total,attackList,rng,slicePool){
 function makeWitchA(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
  const slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
- const riffPlan=pickWitchRiffPlan(rng,bars,slices,.45); // 1オクターブ上のリフ
+ const riffPlan=pickWitchRiffPlan(rng,bars,slices,.85); // 1オクターブ上のリフ
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar),barEnd=Math.min(total,base+Math.floor(bar));
    const progress=bars>1?b/(bars-1):0; // WITCH：終盤に向けてカオスの頂点へ
-   if(riffPlan&&(b===riffPlan.at||b===riffPlan.at+1))
+   if(riffPlan&&riffPlan.ats.some(a=>b===a||b===a+1))
      renderWitchOctaveRiff(out,src,base,beat,slices,sr,rng,detectedScale,riffPlan.riff,riffPlan.sl);
    for(let q=0;q<4;q++){
      const dest=base+Math.floor(q*beat),sl=pickWeightedSlice(slices,rng,true);
@@ -3853,22 +3916,32 @@ function renderWitchOctaveRiff(out,src,base,beat,slices,sr,rng,scale,riff,sl){
   }
 }
 // リフを鳴らす小節を決める。2小節ひと組で、4小節の区切りの中に置く。
+// 8小節に1組だけだと登場が少なすぎたので(発生確率と合わせて実質1割の小節)、
+// 確率を上げたうえで2組目も置けるようにした。2組目は毎回ではなく、
+// 出たり出なかったりする方が「また来た」が効く。
+// 同じリフ・同じスライスを使い回すので、離れて2度鳴っても同じ節に聞こえる。
 function pickWitchRiffPlan(rng,bars,slices,chance){
   if(bars<4||rng()>=chance)return null;
   const voiced=slices.filter(s=>typeof s.pitchClass==="number"&&s.pitchClass>=0);
   const pool=voiced.length?voiced:slices;
   if(!pool.length)return null;
   const starts=[];for(let b=0;b+1<bars;b+=2)starts.push(b);
-  return{at:pick(starts,rng),riff:pick(WITCH_OCTAVE_RIFFS,rng),sl:pick(pool,rng)};
+  const first=pick(starts,rng),ats=[first];
+  if(rng()<.55){
+    // 1組目と重ならない所から2組目を選ぶ
+    const rest=starts.filter(b=>Math.abs(b-first)>=2);
+    if(rest.length)ats.push(pick(rest,rng));
+  }
+  return{ats,riff:pick(WITCH_OCTAVE_RIFFS,rng),sl:pick(pool,rng)};
 }
 function makeWitchB(src,sr,bpm,bars,total,attackList,rng,slicePool){
  const out=new Float32Array(total),beat=sr*60/bpm,bar=beat*4;
  const slices=(slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList));
- const riffPlan=pickWitchRiffPlan(rng,bars,slices,.5); // 1オクターブ上のリフ
+ const riffPlan=pickWitchRiffPlan(rng,bars,slices,.85); // 1オクターブ上のリフ
  for(let b=0;b<bars;b++){
    const base=Math.floor(b*bar);
    const progress=bars>1?b/(bars-1):0;
-   if(riffPlan&&(b===riffPlan.at||b===riffPlan.at+1))
+   if(riffPlan&&riffPlan.ats.some(a=>b===a||b===a+1))
      renderWitchOctaveRiff(out,src,base,beat,slices,sr,rng,detectedScale,riffPlan.riff,riffPlan.sl);
    for(let q=0;q<4;q++){
      const sl=pickWeightedSlice(slices,rng,true),dest=base+Math.floor(q*beat);
