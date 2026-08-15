@@ -145,6 +145,7 @@ main{overflow:visible}
 .preset-row{display:flex;gap:6px;margin:6px 0 0}
 .preset-btn{flex:1;font-size:10px;padding:6px 2px;background:#1a1a1a;color:#999;border:1px solid #333;border-radius:6px;letter-spacing:0;cursor:pointer}
 .preset-btn.active{color:#aaff00;border-color:#aaff00}
+.preset-btn.on{color:#0b0b0b;background:#aaff00;border-color:#aaff00}
 .preset-btn:disabled{opacity:.4;cursor:default}
 .choose-btn,.restart-btn{color:#aaff00;border-color:#aaff00}
 .pan-knob{display:flex;flex-direction:column;align-items:center;gap:2px;flex:0 0 46px;width:46px}
@@ -673,6 +674,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
     <div id="waveBox"><canvas id="wave"></canvas><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
     <div class="preset-row" aria-label="Preset samples">
       <button id="hardRestart" class="preset-btn restart-btn" type="button" disabled>↑RESTART</button>
+      <button id="reversePlay" class="preset-btn restart-btn" type="button" disabled>◀REVERSE</button>
       <button class="preset-btn" type="button" data-preset="1">PRESET 1</button>
       <button class="preset-btn" type="button" data-preset="2">PRESET 2</button>
       <button class="preset-btn" type="button" data-preset="3">PRESET 3</button>
@@ -862,10 +864,62 @@ let mixerLoopDuration=0; // 8小節ループの長さ(バッファ秒)。倍率�
 // 実時間経過をそのまま位置に使うと、倍率を変えた瞬間に現在地が飛ぶ。
 // 倍率を変える直前の位置を控えて、そこからは新しい倍率で進める。
 let mixerPhaseAnchor=0,mixerAnchorTime=0;
+// 逆再生。Web Audioは再生速度をマイナスに出来ないので、逆向きの波形を別に用意して
+// 「今の位置を折り返した所」から鳴らす。16パッドもサウンドロゴも歌も同じ1つのループに
+// 乗っているので、まとめて裏返せば同期は崩れない。
+let mixerReversed=false;
+const reversedRendered={ninja:{},killer:{},banker:{},witch:{}};
+let reversedSoundLogo=null,reversedChaosMelody=null;
+function reverseBuffer(buf){
+  if(!buf)return null;
+  const ctx=getAudioContext(),out=ctx.createBuffer(1,buf.length,buf.sampleRate);
+  const s=buf.getChannelData(0),d=out.getChannelData(0),n=buf.length;
+  for(let i=0;i<n;i++)d[i]=s[n-1-i];
+  return out;
+}
+// 全17本まとめて裏返すと271msかかり、押した瞬間に固まる。演奏中のボタンなので、
+// TRANSLATEの後の空き時間に1本ずつ作っておいて、押された時には出来ている状態にする。
+// 間に合っていなければ、その時に残りをまとめて作る(最悪でも初回だけ)。
+let reversedReady=false,reversedPending=null,reversedTimer=0;
+function reversedJobs(){
+  const jobs=[];
+  for(const m of["ninja","killer","banker","witch"])for(const v of["a","b","c"])
+    jobs.push(()=>{reversedRendered[m][v]=reverseBuffer(rendered[m][v])});
+  jobs.push(()=>{reversedSoundLogo=reverseBuffer(renderedSoundLogo)});
+  if(renderedChaosMelody)for(const dir of CHAOS_DIRS)
+    jobs.push(()=>{reversedChaosMelody[dir]=reverseBuffer(renderedChaosMelody[dir])});
+  return jobs;
+}
+function buildReversedSoon(){
+  clearReversed();
+  reversedChaosMelody={};
+  reversedPending=reversedJobs();
+  const step=()=>{
+    const t0=performance.now();
+    // 1フレームに8ms以上は使わない。表示が引っかからない範囲で進める。
+    while(reversedPending&&reversedPending.length&&performance.now()-t0<8)reversedPending.shift()();
+    if(reversedPending&&reversedPending.length)reversedTimer=requestAnimationFrame(step);
+    else{reversedPending=null;reversedTimer=0;reversedReady=true}
+  };
+  reversedTimer=requestAnimationFrame(step);
+}
+function buildReversed(){
+  if(reversedReady)return;
+  if(!reversedPending){reversedChaosMelody={};reversedPending=reversedJobs()}
+  while(reversedPending.length)reversedPending.shift()();
+  if(reversedTimer)cancelAnimationFrame(reversedTimer);
+  reversedPending=null;reversedTimer=0;reversedReady=true;
+}
+function clearReversed(){
+  if(reversedTimer)cancelAnimationFrame(reversedTimer);
+  reversedTimer=0;reversedPending=null;
+  for(const m of["ninja","killer","banker","witch"])for(const v of["a","b","c"])reversedRendered[m][v]=null;
+  reversedSoundLogo=null;reversedChaosMelody=null;reversedReady=false;
+}
 function mixerPhaseAt(t){
   const loopDur=mixerLoopDuration||0;
   if(loopDur<=0)return -1;
-  const v=mixerPhaseAnchor+(t-mixerAnchorTime)*masterRate;
+  const v=mixerPhaseAnchor+(t-mixerAnchorTime)*masterRate*(mixerReversed?-1:1);
   return ((v%loopDur)+loopDur)%loopDur;
 }
 function mixerPhase(){return mixerPhaseAt(getAudioContext().currentTime)}
@@ -878,7 +932,6 @@ function mixerReanchor(){
 }
 let masterRate=1;
 let renderedBpm=null; // TRANSLATE時に実際に使ったBPM(masterRateとの掛け算で実効BPMを出す)
-let renderedSampleRate=44100; // 書き出しを後回しにしたので、生成時のサンプリングレートを覚えておく
 // TRANSLATE毎に検出するキー/音階。{root,name,intervals,confidence} か、検出できなければ null。
 // ユーザーは一切関与しない完全自動。狙ったキーが要る人は元音源を差し替える前提(BPMと同じ扱い)。
 let detectedScale=null;
@@ -889,8 +942,7 @@ function updateEffectiveBpm(){
 }
 let performanceRecording=false,recordProcessor=null,recordSilentGain=null,recordChunks=[],recordedBuffer=null,recordedBlob=null;
 let performanceSource=null,performanceStartedAt=0,performanceOffset=0,performanceRAF=0;
-// 生成した波形そのもの。WAVに書き出すのはSAVE ZIPを押した時だけなので、ここで持っておく。
-const renderedSamples={ninja:{a:null,b:null,c:null,d:null},killer:{a:null,b:null,c:null,d:null},banker:{a:null,b:null,c:null,d:null},witch:{a:null,b:null,c:null,d:null}};
+
 const setStatus=t=>status.textContent=t;
 function setSamplerEnabled(enabled){
   document.querySelectorAll('.switches input[value="a"],.switches input[value="b"],.switches input[value="c"],.switches input[value="d"]').forEach(el=>{el.disabled=!enabled});
@@ -1020,6 +1072,33 @@ document.getElementById("hardRestart").addEventListener("click",()=>{
   stopMixer(false);
   startMixer().then(applyMixerGains);
 });
+
+// REVERSE: 8小節ループを丸ごと逆から流す。もう一度押すと元に戻る。
+// 位置は引き継ぐので、押した所から後ろへ巻き戻っていく。
+// 音源を差し替えるため一度止めて鳴らし直す(RESTARTと同じ)。その繋ぎ目に
+// 音量の谷を掘って、切り替わりの「バツッ」を消す。
+function setReverseUI(){
+  const btn=document.getElementById("reversePlay");
+  if(!btn)return;
+  btn.textContent=mixerReversed?"▶FORWARD":"◀REVERSE";
+  btn.classList.toggle("on",mixerReversed);
+}
+function toggleReverse(){
+  if(!mixerRunning)return;
+  buildReversed();
+  const ctx=getAudioContext(),m=getMixerMaster(),t=ctx.currentTime;
+  m.gain.cancelScheduledValues(t);
+  m.gain.setValueAtTime(m.gain.value,t);
+  m.gain.linearRampToValueAtTime(0,t+.008);
+  m.gain.setValueAtTime(0,t+.042);
+  m.gain.linearRampToValueAtTime(1,t+.075);
+  const phase=mixerPhase();
+  stopMixer(false);
+  mixerReversed=!mixerReversed;
+  setReverseUI();
+  startMixer(phase<0?0:phase).then(applyMixerGains);
+}
+document.getElementById("reversePlay").addEventListener("click",toggleReverse);
 
 sourceInput.addEventListener("click",()=>{
   setStatus("Waiting for iPhone Photos to hand over the file...");
@@ -1386,7 +1465,7 @@ async function runTranslate(){
       rendered[modeKey][variantKey]=toAudioBuffer(output,sr);
       // WAVへの書き出しはSAVE ZIPを押した時だけでよい。TRANSLATEの度に16本作ると
       // 実測350msかかっていた。押されないまま捨てられる事の方が多いので、後回しにする。
-      renderedSamples[modeKey][variantKey]=output;
+      // 波形を別に取っておく必要は無い。rendered の中身がそのまま使える。
       await nextFrame();
     }
     // 八卦盤を線より外へ振り切った時に鳴る、素材そのもの。4方角ぶん用意する。
@@ -1425,7 +1504,9 @@ async function runTranslate(){
     setSamplerEnabled(true);
     performanceRec.disabled=false;
     lastTouched="mixer";
-    renderedBpm=bpm;renderedSampleRate=sr;
+    renderedBpm=bpm;
+    mixerReversed=false;setReverseUI();
+    buildReversedSoon(); // 逆向きの波形を空き時間に作り直しておく
     updateEffectiveBpm();
     updateChaosTempoSync(); // 新しいBPMに左右のディレイ/うねりを合わせ直す
     resetSwitches();
@@ -1485,13 +1566,13 @@ async function downloadAllZip(){
     ["banker","a","Banker_A.wav"],["banker","b","Banker_B.wav"],["banker","c","Banker_C.wav"],["banker","d","Banker_D.wav"],
     ["witch","a","Witch_A.wav"],["witch","b","Witch_B.wav"],["witch","c","Witch_C.wav"],["witch","d","Witch_D.wav"]
   ];
-  if(names.some(([m,v])=>!renderedSamples[m][v])){setStatus("Translate first — sixteen files are required");return}
+  if(names.some(([m,v])=>!rendered[m][v])){setStatus("Translate first — sixteen files are required");return}
   downloadAll.disabled=true;setStatus("Building ZIP...");
   try{
     // ここで初めてWAVに書き出す。16本で350msほどかかるので、画面を止めないよう1本ずつ譲る。
     const entries=[];
     for(const [m,v,name] of names){
-      entries.push({name,blob:encodeWav(renderedSamples[m][v],renderedSampleRate)});
+      entries.push({name,blob:encodeWav(rendered[m][v].getChannelData(0),rendered[m][v].sampleRate)});
       await nextFrame();
     }
     const zip=await makeStoredZip(entries);await saveBlob(zip,"Robolingual_16_Patterns.zip");setStatus("ZIP ready")}
@@ -2006,7 +2087,14 @@ function slipStop(){
     mixerMaster.gain.linearRampToValueAtTime(1,t+.008); // ミュート解除。進み続けていた現在地からそのまま再開
   }
 }
-async function startMixer(){
+// atPhase は「順方向で数えたループ内の位置(バッファ秒)」。0 なら1小節目の頭から。
+// 逆再生中は、同じ位置が逆向きの波形では末尾から数えた所に来るので折り返して渡す。
+function startOffsetFor(dur,atPhase){
+  if(!(dur>0))return 0;
+  const p=((atPhase%dur)+dur)%dur;
+  return mixerReversed?((dur-p)%dur):p;
+}
+async function startMixer(atPhase=0){
   if(mixerRunning)return;
   const ctx=getAudioContext();
   if(ctx.state==="suspended")await ctx.resume();
@@ -2014,10 +2102,10 @@ async function startMixer(){
   mixerSources=[];
   mixerGains={};
   mixerLoopDuration=0;
-  mixerPhaseAnchor=0;mixerAnchorTime=when; // ここが位置の起点
+  const pads=mixerReversed?reversedRendered:rendered;
   for(const mode of["ninja","killer","banker","witch"]){
     for(const variant of["a","b","c"]){
-      const buffer=rendered[mode][variant];
+      const buffer=pads[mode]&&pads[mode][variant];
       if(!buffer)continue;
       if(!mixerLoopDuration)mixerLoopDuration=buffer.duration; // 全variant共通の長さ(8小節)
       const source=ctx.createBufferSource();
@@ -2029,22 +2117,24 @@ async function startMixer(){
       source.playbackRate.setValueAtTime(masterRate,when);
       gain.gain.setValueAtTime(0,when);
       source.connect(gain).connect(getModePanner(mode));
-      source.start(when);
+      source.start(when,startOffsetFor(buffer.duration,atPhase));
       mixerSources.push(source);
       mixerGains[`${mode}-${variant}`]=gain;
     }
   }
-  if(renderedSoundLogo){
+  mixerPhaseAnchor=atPhase;mixerAnchorTime=when; // ここが位置の起点
+  const logoBuf=mixerReversed?reversedSoundLogo:renderedSoundLogo;
+  if(logoBuf){
     const logoSource=ctx.createBufferSource();
     const logoGain=ctx.createGain();
-    logoSource.buffer=renderedSoundLogo;
+    logoSource.buffer=logoBuf;
     logoSource.loop=true;
     logoSource.loopStart=0;
-    logoSource.loopEnd=renderedSoundLogo.duration;
+    logoSource.loopEnd=logoBuf.duration;
     logoSource.playbackRate.setValueAtTime(masterRate,when);
     logoGain.gain.setValueAtTime(1,when);
     logoSource.connect(logoGain).connect(getMixerMaster());
-    logoSource.start(when);
+    logoSource.start(when,startOffsetFor(logoBuf.duration,atPhase));
     mixerSources.push(logoSource);
     mixerGains.soundLogo=logoGain;
   }
@@ -2052,20 +2142,22 @@ async function startMixer(){
   // getChaosBus()側のmelodyGainsが盤の位置に応じて開閉する。テンポを変えた時も、
   // 他の音源と同じくsetMasterRateがまとめて追随させる(mixerSourcesに入れてあるため)。
   getChaosBus();
-  if(renderedChaosMelody&&chaosNodes){
+  const melody=mixerReversed?reversedChaosMelody:renderedChaosMelody;
+  if(melody&&chaosNodes){
     for(const dir of CHAOS_DIRS){
-      const buf=renderedChaosMelody[dir];
+      const buf=melody[dir];
       if(!buf)continue;
       const src=ctx.createBufferSource();
       src.buffer=buf;src.loop=true;src.loopStart=0;src.loopEnd=buf.duration;
       src.playbackRate.setValueAtTime(masterRate,when);
       src.connect(chaosNodes.melodyGains[dir]);
-      src.start(when);
+      src.start(when,startOffsetFor(buf.duration,atPhase));
       mixerSources.push(src);
     }
   }
   mixerRunning=true;
   document.getElementById("hardRestart").disabled=false;
+  document.getElementById("reversePlay").disabled=false;
   startMixerGrid();
 }
 
@@ -2211,7 +2303,8 @@ function stopMixer(reset=false){
   mixerSources=[];
   mixerGains={};
   mixerRunning=false;
-  if(reset){resetSwitches();document.getElementById("hardRestart").disabled=true}
+  if(reset){resetSwitches();document.getElementById("hardRestart").disabled=true;
+    document.getElementById("reversePlay").disabled=true;mixerReversed=false;setReverseUI()}
 }
 
 document.querySelectorAll('.switches input[type="radio"]').forEach(el=>el.addEventListener("change",updateMixer));
@@ -2226,7 +2319,7 @@ function updateSaveButton(){
     downloadAll.disabled=!recordedBlob;
   }else{
     downloadAll.textContent="SAVE ZIP";
-    const ready=["ninja","killer","banker","witch"].every(m=>["a","b","c","d"].every(v=>renderedSamples[m][v]));
+    const ready=["ninja","killer","banker","witch"].every(m=>["a","b","c","d"].every(v=>rendered[m][v]));
     downloadAll.disabled=!ready;
   }
 }
@@ -3686,27 +3779,76 @@ function makeBankerA(src,sr,bpm,bars,total,attackList,rng,slicePool){
   }
   return out;
 }
+// BANKER B: 3つとも刻むと同じ顔になるので、Bだけスラップベースのソロにする。
+// スラップは3つの打ち方の入れ替えで出来ている。ここでもその3つを作り分ける:
+//   t = サムピング  親指で叩く低音。1オクターブ下。
+//   p = プル       高い弦を引っ張る抜けた音。1オクターブ上で、音程も上へ跳ぶ。
+//   g = ゴースト    ミュートした空打ち。音程を持たず、隙間を埋めて粒を作る。
+// 「暴れる」感じは音域の落差から出るので、t と p は最低2オクターブ離す。
+// 16分の升目で書いてある。「.」は休み。
+const BANKER_SLAP_PATTERNS=[
+  "t.gp.gt.gp.gt.p.",
+  "t..pg.t.g.pg.t.p",
+  "tg.pt.gp.gt.p.g.",
+  "t.gtg.p.t.gp.gt.",
+];
+// ソロなので音程が動く。度数はスケールから引くので、検出したキーから外れない。
+// 低音は根音まわりを行き来し、プルはその上へ跳ぶ形にしてある。
+const BANKER_SLAP_THUMB_DEGREES=[0,0,2,0,4,0,-3,0];
+const BANKER_SLAP_POP_DEGREES=[7,9,7,11,7,9,12,9];
+// ゴーストと弾いた音の音量比。固定のゲインで書いた時、素材によってゴーストが
+// サムピングの-43dB〜-15dBと大きく振れ、消える素材があった(無声の子音は元々小さく、
+// さらに1オクターブ下げるので痩せる)。測って比で合わせれば素材によらない。
+// -14dBは、隙間が埋まっているのは分かるが前には出てこない位置。
+const BANKER_SLAP_GHOST_TO_NOTE=.2;
+function renderBankerSlapBar(out,src,base,beat,slices,sr,rng,scale,barIndex){
+  const step=beat/4,barLen=Math.floor(beat*4);
+  const pat=BANKER_SLAP_PATTERNS[barIndex%BANKER_SLAP_PATTERNS.length];
+  // 低音とプルは同じスライスで通す。同じ弦を弾いている形になり、ソロとして繋がる。
+  const voiced=slices.filter(s=>typeof s.pitchClass==="number"&&s.pitchClass>=0);
+  const note=pick(voiced.length?voiced:slices,rng);
+  // 弾いた音とゴーストは別の器に描く。あとで比を測って合わせるため。
+  const noteLayer=new Float32Array(barLen),ghostLayer=new Float32Array(barLen);
+  let ti=barIndex,pi=barIndex;
+  for(let i=0;i<16;i++){
+    const c=pat[i],at=Math.floor(i*step);
+    if(c==="."||at>=barLen)continue;
+    if(c==="g"){
+      // ゴーストは音程を持たない。無声の粒を短く置く。
+      const gh=pickPercussiveSlice(slices,rng);
+      const len=Math.max(Math.floor(sr*.012),Math.floor(step*.5));
+      renderOneShot(ghostLayer,src,at,gh.start,Math.min(gh.length,len,barLen-at),.6,BANKER_OCTAVE_RATE);
+      continue;
+    }
+    const deg=c==="t"?BANKER_SLAP_THUMB_DEGREES[ti++%BANKER_SLAP_THUMB_DEGREES.length]
+                     :BANKER_SLAP_POP_DEGREES[pi++%BANKER_SLAP_POP_DEGREES.length];
+    // スライス自身の高さから目標の度数へ寄せてから、下(-12)か上(+12)へ振る。
+    // 寄せ方は最短ではなく、低音は必ず下へ・プルは必ず上へ回る向きを使う。
+    // 最短で寄せていた時、上へ+6半音寄る組み合わせだとサムピングが-6半音までしか
+    // 下がらず、低域が他の素材の1/10(実測0.00116 対 0.0107〜0.0138)まで落ちていた。
+    // この向きに固定すると、低音は-23〜-12、プルは+12〜+23で、間は必ず2オクターブ以上開く。
+    const target=(((scale?scale.root:0)+scaleDegreeSemitone(scale,deg))%12+12)%12;
+    const pc=(typeof note.pitchClass==="number"&&note.pitchClass>=0)?note.pitchClass:target;
+    const semis=c==="t"?-12-(((pc-target)%12)+12)%12
+                       : 12+(((target-pc)%12)+12)%12;
+    const len=Math.min(note.length,Math.floor(step*(c==="t"?1.6:.8)),barLen-at);
+    renderPitchedOneShot(noteLayer,src,at,note.start,len,(c==="t"?.72:.6)+rng()*.08,semis);
+  }
+  const nr=rmsOf(noteLayer),gr=rmsOf(ghostLayer);
+  const gs=(nr>1e-6&&gr>1e-6)?Math.min(20,nr*BANKER_SLAP_GHOST_TO_NOTE/gr):1;
+  for(let i=0;i<barLen;i++){const d=base+i;if(d>=out.length)break;out[d]+=noteLayer[i]+ghostLayer[i]*gs}
+}
 function makeBankerB(src,sr,bpm,bars,total,attackList,rng,slicePool){
   const out=new Float32Array(total);
   const beat=sr*60/bpm,bar=beat*4,slices=ensureMinimumSlices((slicePool&&slicePool.length?slicePool:makeSlices(src,sr,attackList)),src,sr,4);
-  const halfway=Math.floor(bars/2);
   for(let b=0;b<bars;b++){
     const base=Math.floor(b*bar);
-    const phrase=pickBankerPhrase(rng);
-    phrase.fn(out,src,base,beat,slices,sr,rng,BANKER_OCTAVE_RATE);
-    // 裏拍にも均等な刻みを足し、机帳面さ・機械的な正確さを強調する。ブレイクの小節は空けたままにする。
-    if(phrase.name!=="break")for(let e=0;e<4;e++){
-      const dest=base+Math.floor((e+.5)*beat);
-      const sl=slices[(e*2+1)%slices.length];
-      renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.2)),.42+rng()*.06,BANKER_OCTAVE_RATE);
-    }
-    // BANKER固有：後半からは16分単位まで正確さを上げる(決め打ち、ランダムに頼らない機械的エスカレーション)。
-    if(bars>=8&&b>=halfway&&phrase.name!=="break"){
-      for(let s=0;s<4;s++){
-        const dest=base+Math.floor((s+.25)*beat);
-        const sl=slices[(s*3+1)%slices.length];
-        renderOneShot(out,src,dest,sl.start,Math.min(sl.length,Math.floor(beat*.1)),.26,BANKER_OCTAVE_RATE);
-      }
+    renderBankerSlapBar(out,src,base,beat,slices,sr,rng,detectedScale,b);
+    // 4小節の切れ目だけ、拍の頭に低音を置いてソロの地を作る。
+    // 全部ソロだと何拍目か分からなくなるため。
+    if(b%4===3){
+      const sl=slices[(b*7+2)%slices.length];
+      renderOneShot(out,src,base,sl.start,Math.min(sl.length,Math.floor(beat*.9)),.5,BANKER_OCTAVE_RATE);
     }
   }
   return out;
