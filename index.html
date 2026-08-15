@@ -145,7 +145,6 @@ main{overflow:visible}
 .preset-row{display:flex;gap:6px;margin:6px 0 0}
 .preset-btn{flex:1;font-size:10px;padding:6px 2px;background:#1a1a1a;color:#999;border:1px solid #333;border-radius:6px;letter-spacing:0;cursor:pointer}
 .preset-btn.active{color:#aaff00;border-color:#aaff00}
-.preset-btn.on{color:#0b0b0b;background:#aaff00;border-color:#aaff00}
 .preset-btn:disabled{opacity:.4;cursor:default}
 .choose-btn,.restart-btn{color:#aaff00;border-color:#aaff00}
 .pan-knob{display:flex;flex-direction:column;align-items:center;gap:2px;flex:0 0 46px;width:46px}
@@ -156,7 +155,7 @@ main{overflow:visible}
 .chaos-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 #chaosHold{font-size:11px;padding:7px 12px}
 #chaosHold.on{background:#aaff00;color:#111111;box-shadow:0 0 12px rgba(170,255,0,.6);border-color:#aaff00}
-#chaosZeroLock.on{background:#aaff00;color:#111111;box-shadow:0 0 12px rgba(170,255,0,.6);border-color:#aaff00}
+#chaosZeroLock.on,#reversePlay.on{background:#aaff00;color:#111111;box-shadow:0 0 12px rgba(170,255,0,.6);border-color:#aaff00}
 #chaosZeroMark{position:absolute;width:8px;height:8px;border-radius:50%;border:2px solid #aaff00;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;opacity:0;transition:opacity .2s}
 #chaosZeroMark.visible{opacity:.85}
 #chaosPadWrap{position:relative;width:min(66vw,240px);aspect-ratio:1;margin:0 auto}
@@ -264,7 +263,7 @@ main{padding:16px;overflow:visible}
 #chaosPadWrap{position:relative;width:100%;aspect-ratio:1;margin:0}
 #chaosPad{border-radius:12px;overflow:hidden}
 #chaosBaguaImg{border-radius:12px}
-#chaosHold.on,#chaosZeroLock.on{background:linear-gradient(#c8ff3a,#8fd400);color:#0d1a00;
+#chaosHold.on,#chaosZeroLock.on,#reversePlay.on{background:linear-gradient(#c8ff3a,#8fd400);color:#0d1a00;
      box-shadow:0 0 14px rgba(170,255,0,.6),0 3px 0 #6f8f00}
 .chaos-spare{min-height:0}
 
@@ -674,7 +673,6 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
     <div id="waveBox"><canvas id="wave"></canvas><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
     <div class="preset-row" aria-label="Preset samples">
       <button id="hardRestart" class="preset-btn restart-btn" type="button" disabled>↑RESTART</button>
-      <button id="reversePlay" class="preset-btn restart-btn" type="button" disabled>◀REVERSE</button>
       <button class="preset-btn" type="button" data-preset="1">PRESET 1</button>
       <button class="preset-btn" type="button" data-preset="2">PRESET 2</button>
       <button class="preset-btn" type="button" data-preset="3">PRESET 3</button>
@@ -748,6 +746,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
   <div class="bay bay-side">
     <button id="chaosHold" type="button">HOLD<br>OFF</button>
     <button id="chaosZeroLock" type="button">0 LOCK</button>
+    <button id="reversePlay" type="button" disabled>◀REV</button>
   </div>
   <div class="bay bay-chaos">
     <section id="chaosSection" aria-label="Chaos pad">
@@ -1080,7 +1079,7 @@ document.getElementById("hardRestart").addEventListener("click",()=>{
 function setReverseUI(){
   const btn=document.getElementById("reversePlay");
   if(!btn)return;
-  btn.textContent=mixerReversed?"▶FORWARD":"◀REVERSE";
+  btn.textContent=mixerReversed?"▶FWD":"◀REV";
   btn.classList.toggle("on",mixerReversed);
 }
 function toggleReverse(){
