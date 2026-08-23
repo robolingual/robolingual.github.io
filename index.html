@@ -1085,12 +1085,19 @@ function setReverseUI(){
 function toggleReverse(){
   if(!mixerRunning)return;
   buildReversed();
-  const ctx=getAudioContext(),m=getMixerMaster(),t=ctx.currentTime;
-  m.gain.cancelScheduledValues(t);
-  m.gain.setValueAtTime(m.gain.value,t);
-  m.gain.linearRampToValueAtTime(0,t+.008);
-  m.gain.setValueAtTime(0,t+.042);
-  m.gain.linearRampToValueAtTime(1,t+.075);
+  const ctx=getAudioContext();
+  // 繋ぎ目の「バツッ」を消すための音量の谷。ただしスリップループで押さえている間は
+  // 元の音を0にミュートしてあるので、ここで触ると谷の終わりで1へ戻してしまい、
+  // 押さえているループの下から元の音が出てくる。その時は何もしない
+  // (どのみち鳴っていないので、繋ぎ目を隠す必要も無い)。
+  if(!slipActive){
+    const m=getMixerMaster(),t=ctx.currentTime;
+    m.gain.cancelScheduledValues(t);
+    m.gain.setValueAtTime(m.gain.value,t);
+    m.gain.linearRampToValueAtTime(0,t+.008);
+    m.gain.setValueAtTime(0,t+.042);
+    m.gain.linearRampToValueAtTime(1,t+.075);
+  }
   const phase=mixerPhase();
   stopMixer(false);
   mixerReversed=!mixerReversed;
