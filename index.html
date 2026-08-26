@@ -33,6 +33,16 @@ button:active{box-shadow:none;transform:translate(2px,2px)}
 button:disabled{cursor:not-allowed}
 input[type=file]{display:none}
 #waveBox{position:relative;width:100%}
+/* パチンコの弾を置く点。左は順回転、右は逆回転。引いた距離が力になる。 */
+.spin-pt{position:absolute;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#f2f2f2,#8a8a8a 60%,#4a4a4a);
+  box-shadow:0 0 0 1px #000,0 1px 3px rgba(0,0,0,.7);
+  touch-action:none;cursor:grab;z-index:3}
+.spin-pt:active{cursor:grabbing}
+#spinL{left:11px}
+#spinR{left:auto;right:11px;margin-left:0;margin-right:-9px}
+.spin-pt.pulling{box-shadow:0 0 0 1px #000,0 0 10px rgba(170,255,0,.9)}
+#spinBands{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
 #wave{display:block}
 #bpm{width:92px;border:2px solid var(--ink);background:#fff;padding:9px;border-radius:0;font-weight:400}
 #translate{width:100%;font-size:20px;padding:15px;background:var(--ink);color:#fff;box-shadow:4px 4px 0 #777;margin:4px 0 14px}
@@ -670,7 +680,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
     <button id="downloadAll" class="dl-wav" type="button" disabled>SAVE</button>
   </div>
   <div class="bay bay-main">
-    <div id="waveBox"><canvas id="wave"></canvas><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
+    <div id="waveBox"><canvas id="wave"></canvas><svg id="spinBands" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="spin-pt" id="spinL" data-dir="1"></div><div class="spin-pt" id="spinR" data-dir="-1"></div><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
     <div class="preset-row" aria-label="Preset samples">
       <button id="hardRestart" class="preset-btn restart-btn" type="button" disabled>↑RESTART</button>
       <button class="preset-btn" type="button" data-preset="1">PRESET 1</button>
@@ -1664,6 +1674,154 @@ document.querySelectorAll(".mode").forEach(modeEl=>{
   window.addEventListener("pointerup",release);
   window.addEventListener("pointercancel",release);
 });
+// ================= スピン(パチンコ) =================
+// 波形窓の左右に置いた点を引っ張って離すと、そこから弾が窓へ飛び、
+// ループに一撃を加える。引いた距離が力で、角度は今は見ていない。
+//   右の点 = 進行方向を遮る向きの打撃 → 逆スピン
+//   左の点 = 進行方向に沿う打撃       → 順スピン
+// 引いている間は音に干渉しない(狙いを定めているだけ)。力が入るのは離した瞬間から。
+//
+// 勢いは摩擦で尽きる。速度が e^(-t/τ) で落ちるので、進む距離は 初速×τ になる。
+// 逆スピンで巻き戻った距離は、そのままループの現在地に残す。回すとは位置が動く事なので。
+const SPIN_MAX_RATE=6;   // 目一杯引いた時の初速(倍)
+const SPIN_TAU=.25;      // 勢いが尽きるまでの時定数(秒)。全力で 6×.25=1.5秒ぶん進む
+const SPIN_MIN_FORCE=.06;// これ未満は暴発とみなして捨てる
+let spinning=false;
+function spinDistance(force){return SPIN_MAX_RATE*force*SPIN_TAU} // バッファ秒
+
+// 逆スピン: 写しを裏返して鳴らす。先の音は録れていないので、後ろ向きだけこの方式。
+function fireBackspin(force){
+  const ctx=getAudioContext();
+  getChaosBus();
+  const snap=slipTakeSnapshot();
+  if(!snap)return false;
+  // 写しの末尾が「今」。裏返して頭から鳴らせば、今から過去へ遡る。
+  const n=snap.length,rev=ctx.createBuffer(1,n,snap.sampleRate);
+  const a=snap.getChannelData(0),b=rev.getChannelData(0);
+  for(let i=0;i<n;i++)b[i]=a[n-1-i];
+  const t=ctx.currentTime;
+  const src=ctx.createBufferSource(),g=ctx.createGain();
+  src.buffer=rev;
+  src.playbackRate.setValueAtTime(SPIN_MAX_RATE*force*masterRate,t);
+  src.playbackRate.setTargetAtTime(0,t,SPIN_TAU);
+  g.gain.setValueAtTime(1,t);
+  src.connect(g).connect(getChaosBus());
+  src.start(t);
+  // 元の音は伏せる。戻すのはスピンが終わってから。
+  const m=getMixerMaster();
+  m.gain.cancelScheduledValues(t);
+  m.gain.setValueAtTime(m.gain.value,t);
+  m.gain.linearRampToValueAtTime(0,t+.006);
+  const dur=SPIN_TAU*4; // 4τで初速の2%まで落ちる。ここで打ち切る
+  g.gain.setTargetAtTime(0,t+dur*.6,SPIN_TAU*.5);
+  // 巻き戻る間、曲は前へ進んでいない(レコードを後ろへ引きずっている最中なので)。
+  // 打った瞬間の位置を控えておいて、そこから戻した所へ着地させる。
+  // 終わってから mixerPhase() を読むと、止まっている間も進んだ事にされ、
+  // 実測で逆スピンなのに +0.76秒 前へ出ていた。
+  const from=mixerPhase(),back=spinDistance(force);
+  setTimeout(()=>{
+    try{src.stop()}catch(_){}
+    try{src.disconnect()}catch(_){}
+    stopMixer(false);
+    startMixer(from-back).then(()=>{
+      applyMixerGains();
+      if(!slipActive){
+        const c=getAudioContext(),tt=c.currentTime,mm=getMixerMaster();
+        mm.gain.cancelScheduledValues(tt);
+        mm.gain.setValueAtTime(0,tt);
+        mm.gain.linearRampToValueAtTime(1,tt+.05);
+      }
+      spinning=false;
+    });
+  },dur*1000);
+  return true;
+}
+// 順スピン: 先の音は元のループが持っているので、鳴っているまま速度だけ上げて落とす。
+// 音源を差し替えないぶん、こちらは音が痩せない。
+function fireForwardSpin(force){
+  const ctx=getAudioContext(),t=ctx.currentTime;
+  const peak=masterRate*(1+SPIN_MAX_RATE*force);
+  for(const src of mixerSources){
+    try{
+      src.playbackRate.cancelScheduledValues(t);
+      src.playbackRate.setValueAtTime(peak,t);
+      src.playbackRate.setTargetAtTime(masterRate,t,SPIN_TAU);
+    }catch(_){}
+  }
+  // 余分に進んだぶんを現在地へ足す。表示と実際の音がずれないように。
+  mixerReanchor();
+  const extra=spinDistance(force);
+  setTimeout(()=>{
+    mixerReanchor();
+    mixerPhaseAnchor+=extra;
+    spinning=false;
+  },SPIN_TAU*4*1000);
+  return true;
+}
+function fireSpin(dir,force){
+  // スリップループで押さえている最中は撃たない。切り取ったループと写しが二重に鳴り、
+  // 巻き戻し先の管理も食い違うため。指を離してからなら撃てる。
+  if(spinning||!mixerRunning||slipActive||force<SPIN_MIN_FORCE)return;
+  spinning=true;
+  const ok=dir<0?fireBackspin(force):fireForwardSpin(force);
+  if(!ok)spinning=false;
+}
+
+// --- 引っ張る操作 ---------------------------------------------------------
+// 力は「家の位置からどれだけ離れたか」だけで決める(角度は今は見ない)。
+// 目一杯は波形窓の横幅の半分。そこで頭打ちにして、それ以上引いても増えない。
+const spinBands=document.getElementById("spinBands");
+function drawSpinBand(el,home,x,y,force){
+  if(!spinBands)return;
+  const box=document.getElementById("waveBox").getBoundingClientRect();
+  const pct=(px,py)=>[(px-box.left)/box.width*100,(py-box.top)/box.height*100];
+  const [hx,hy]=pct(home.x,home.y),[tx,ty]=pct(x,y);
+  spinBands.innerHTML=`<line x1="${hx}" y1="${hy}" x2="${tx}" y2="${ty}"
+    stroke="rgba(170,255,0,${.25+force*.65})" stroke-width="${1+force*2}"
+    vector-effect="non-scaling-stroke" stroke-linecap="round"/>`;
+}
+document.querySelectorAll(".spin-pt").forEach(pt=>{
+  const dir=Number(pt.dataset.dir);
+  let id=null,home=null,maxDist=1;
+  pt.addEventListener("pointerdown",e=>{
+    if(id!==null||!mixerRunning)return;
+    id=e.pointerId;
+    const r=pt.getBoundingClientRect(),box=document.getElementById("waveBox").getBoundingClientRect();
+    home={x:r.left+r.width/2,y:r.top+r.height/2};
+    maxDist=Math.max(40,box.width/2);
+    pt.classList.add("pulling");
+    pt.style.transition="none";
+    try{pt.setPointerCapture(id)}catch(_){}
+    e.preventDefault();e.stopPropagation();
+  });
+  pt.addEventListener("pointermove",e=>{
+    if(id===null||e.pointerId!==id)return;
+    const dx=e.clientX-home.x,dy=e.clientY-home.y;
+    const force=Math.min(1,Math.hypot(dx,dy)/maxDist);
+    // 見た目は窓の中に留める。力は実際に引いた距離で決めるので、
+    // 端で止まって見えても、そこから先も溜まり続ける。
+    const box=document.getElementById("waveBox").getBoundingClientRect();
+    const cx=Math.max(box.left+9,Math.min(box.right-9,e.clientX));
+    const cy=Math.max(box.top+9,Math.min(box.bottom-9,e.clientY));
+    pt.style.transform=`translate(${cx-home.x}px,${cy-home.y}px)`;
+    drawSpinBand(pt,home,cx,cy,force);
+    e.preventDefault();e.stopPropagation();
+  });
+  const release=e=>{
+    if(id===null||e.pointerId!==id)return;
+    const dx=e.clientX-home.x,dy=e.clientY-home.y;
+    const force=Math.min(1,Math.hypot(dx,dy)/maxDist);
+    id=null;
+    pt.classList.remove("pulling");
+    pt.style.transition="transform .28s cubic-bezier(.2,1.6,.4,1)"; // ゼンマイが戻る感じ
+    pt.style.transform="translate(0,0)";
+    if(spinBands)spinBands.innerHTML="";
+    fireSpin(dir,force);
+  };
+  pt.addEventListener("pointerup",release);
+  pt.addEventListener("pointercancel",release);
+});
+// ================= /スピン =================
 function stopRecordedPlayback(keepWave=true,resetOffset=true){
   if(performanceSource){try{performanceSource.onended=null;performanceSource.stop()}catch(_){}try{performanceSource.disconnect()}catch(_){}}
   performanceSource=null;
@@ -2005,7 +2163,13 @@ function slipStop(){
     mixerMaster.gain.linearRampToValueAtTime(1,t+.008); // ミュート解除。進み続けていた現在地からそのまま再開
   }
 }
-async function startMixer(){
+function phaseOffset(dur,atPhase){
+  if(!(dur>0))return 0;
+  return ((atPhase%dur)+dur)%dur; // 巻き戻して負になった時も頭を跨いで回り込ませる
+}
+// atPhase はループ内のどこから鳴らし始めるか(バッファ秒)。0 なら1小節目の頭。
+// 逆スピンで巻き戻った位置から鳴らし直すために使う。
+async function startMixer(atPhase=0){
   if(mixerRunning)return;
   const ctx=getAudioContext();
   if(ctx.state==="suspended")await ctx.resume();
@@ -2027,12 +2191,12 @@ async function startMixer(){
       source.playbackRate.setValueAtTime(masterRate,when);
       gain.gain.setValueAtTime(0,when);
       source.connect(gain).connect(getModePanner(mode));
-      source.start(when);
+      source.start(when,phaseOffset(buffer.duration,atPhase));
       mixerSources.push(source);
       mixerGains[`${mode}-${variant}`]=gain;
     }
   }
-  mixerPhaseAnchor=0;mixerAnchorTime=when; // ここが位置の起点
+  mixerPhaseAnchor=atPhase;mixerAnchorTime=when; // ここが位置の起点
   if(renderedSoundLogo){
     const logoSource=ctx.createBufferSource();
     const logoGain=ctx.createGain();
@@ -2043,7 +2207,7 @@ async function startMixer(){
     logoSource.playbackRate.setValueAtTime(masterRate,when);
     logoGain.gain.setValueAtTime(1,when);
     logoSource.connect(logoGain).connect(getMixerMaster());
-    logoSource.start(when);
+    logoSource.start(when,phaseOffset(renderedSoundLogo.duration,atPhase));
     mixerSources.push(logoSource);
     mixerGains.soundLogo=logoGain;
   }
@@ -2059,7 +2223,7 @@ async function startMixer(){
       src.buffer=buf;src.loop=true;src.loopStart=0;src.loopEnd=buf.duration;
       src.playbackRate.setValueAtTime(masterRate,when);
       src.connect(chaosNodes.melodyGains[dir]);
-      src.start(when);
+      src.start(when,phaseOffset(buf.duration,atPhase));
       mixerSources.push(src);
     }
   }
