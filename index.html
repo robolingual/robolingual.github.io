@@ -155,7 +155,7 @@ main{overflow:visible}
 .chaos-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 #chaosHold{font-size:11px;padding:7px 12px}
 #chaosHold.on{background:#aaff00;color:#111111;box-shadow:0 0 12px rgba(170,255,0,.6);border-color:#aaff00}
-#chaosZeroLock.on,#reversePlay.on{background:#aaff00;color:#111111;box-shadow:0 0 12px rgba(170,255,0,.6);border-color:#aaff00}
+#chaosZeroLock.on{background:#aaff00;color:#111111;box-shadow:0 0 12px rgba(170,255,0,.6);border-color:#aaff00}
 #chaosZeroMark{position:absolute;width:8px;height:8px;border-radius:50%;border:2px solid #aaff00;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;opacity:0;transition:opacity .2s}
 #chaosZeroMark.visible{opacity:.85}
 #chaosPadWrap{position:relative;width:min(66vw,240px);aspect-ratio:1;margin:0 auto}
@@ -263,7 +263,7 @@ main{padding:16px;overflow:visible}
 #chaosPadWrap{position:relative;width:100%;aspect-ratio:1;margin:0}
 #chaosPad{border-radius:12px;overflow:hidden}
 #chaosBaguaImg{border-radius:12px}
-#chaosHold.on,#chaosZeroLock.on,#reversePlay.on{background:linear-gradient(#c8ff3a,#8fd400);color:#0d1a00;
+#chaosHold.on,#chaosZeroLock.on{background:linear-gradient(#c8ff3a,#8fd400);color:#0d1a00;
      box-shadow:0 0 14px rgba(170,255,0,.6),0 3px 0 #6f8f00}
 .chaos-spare{min-height:0}
 
@@ -746,7 +746,6 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
   <div class="bay bay-side">
     <button id="chaosHold" type="button">HOLD<br>OFF</button>
     <button id="chaosZeroLock" type="button">0 LOCK</button>
-    <button id="reversePlay" type="button" disabled>◀REV</button>
   </div>
   <div class="bay bay-chaos">
     <section id="chaosSection" aria-label="Chaos pad">
@@ -863,62 +862,10 @@ let mixerLoopDuration=0; // 8小節ループの長さ(バッファ秒)。倍率�
 // 実時間経過をそのまま位置に使うと、倍率を変えた瞬間に現在地が飛ぶ。
 // 倍率を変える直前の位置を控えて、そこからは新しい倍率で進める。
 let mixerPhaseAnchor=0,mixerAnchorTime=0;
-// 逆再生。Web Audioは再生速度をマイナスに出来ないので、逆向きの波形を別に用意して
-// 「今の位置を折り返した所」から鳴らす。16パッドもサウンドロゴも歌も同じ1つのループに
-// 乗っているので、まとめて裏返せば同期は崩れない。
-let mixerReversed=false;
-const reversedRendered={ninja:{},killer:{},banker:{},witch:{}};
-let reversedSoundLogo=null,reversedChaosMelody=null;
-function reverseBuffer(buf){
-  if(!buf)return null;
-  const ctx=getAudioContext(),out=ctx.createBuffer(1,buf.length,buf.sampleRate);
-  const s=buf.getChannelData(0),d=out.getChannelData(0),n=buf.length;
-  for(let i=0;i<n;i++)d[i]=s[n-1-i];
-  return out;
-}
-// 全17本まとめて裏返すと271msかかり、押した瞬間に固まる。演奏中のボタンなので、
-// TRANSLATEの後の空き時間に1本ずつ作っておいて、押された時には出来ている状態にする。
-// 間に合っていなければ、その時に残りをまとめて作る(最悪でも初回だけ)。
-let reversedReady=false,reversedPending=null,reversedTimer=0;
-function reversedJobs(){
-  const jobs=[];
-  for(const m of["ninja","killer","banker","witch"])for(const v of["a","b","c"])
-    jobs.push(()=>{reversedRendered[m][v]=reverseBuffer(rendered[m][v])});
-  jobs.push(()=>{reversedSoundLogo=reverseBuffer(renderedSoundLogo)});
-  if(renderedChaosMelody)for(const dir of CHAOS_DIRS)
-    jobs.push(()=>{reversedChaosMelody[dir]=reverseBuffer(renderedChaosMelody[dir])});
-  return jobs;
-}
-function buildReversedSoon(){
-  clearReversed();
-  reversedChaosMelody={};
-  reversedPending=reversedJobs();
-  const step=()=>{
-    const t0=performance.now();
-    // 1フレームに8ms以上は使わない。表示が引っかからない範囲で進める。
-    while(reversedPending&&reversedPending.length&&performance.now()-t0<8)reversedPending.shift()();
-    if(reversedPending&&reversedPending.length)reversedTimer=requestAnimationFrame(step);
-    else{reversedPending=null;reversedTimer=0;reversedReady=true}
-  };
-  reversedTimer=requestAnimationFrame(step);
-}
-function buildReversed(){
-  if(reversedReady)return;
-  if(!reversedPending){reversedChaosMelody={};reversedPending=reversedJobs()}
-  while(reversedPending.length)reversedPending.shift()();
-  if(reversedTimer)cancelAnimationFrame(reversedTimer);
-  reversedPending=null;reversedTimer=0;reversedReady=true;
-}
-function clearReversed(){
-  if(reversedTimer)cancelAnimationFrame(reversedTimer);
-  reversedTimer=0;reversedPending=null;
-  for(const m of["ninja","killer","banker","witch"])for(const v of["a","b","c"])reversedRendered[m][v]=null;
-  reversedSoundLogo=null;reversedChaosMelody=null;reversedReady=false;
-}
 function mixerPhaseAt(t){
   const loopDur=mixerLoopDuration||0;
   if(loopDur<=0)return -1;
-  const v=mixerPhaseAnchor+(t-mixerAnchorTime)*masterRate*(mixerReversed?-1:1);
+  const v=mixerPhaseAnchor+(t-mixerAnchorTime)*masterRate;
   return ((v%loopDur)+loopDur)%loopDur;
 }
 function mixerPhase(){return mixerPhaseAt(getAudioContext().currentTime)}
@@ -1072,39 +1019,6 @@ document.getElementById("hardRestart").addEventListener("click",()=>{
   startMixer().then(applyMixerGains);
 });
 
-// REVERSE: 8小節ループを丸ごと逆から流す。もう一度押すと元に戻る。
-// 位置は引き継ぐので、押した所から後ろへ巻き戻っていく。
-// 音源を差し替えるため一度止めて鳴らし直す(RESTARTと同じ)。その繋ぎ目に
-// 音量の谷を掘って、切り替わりの「バツッ」を消す。
-function setReverseUI(){
-  const btn=document.getElementById("reversePlay");
-  if(!btn)return;
-  btn.textContent=mixerReversed?"▶FWD":"◀REV";
-  btn.classList.toggle("on",mixerReversed);
-}
-function toggleReverse(){
-  if(!mixerRunning)return;
-  buildReversed();
-  const ctx=getAudioContext();
-  // 繋ぎ目の「バツッ」を消すための音量の谷。ただしスリップループで押さえている間は
-  // 元の音を0にミュートしてあるので、ここで触ると谷の終わりで1へ戻してしまい、
-  // 押さえているループの下から元の音が出てくる。その時は何もしない
-  // (どのみち鳴っていないので、繋ぎ目を隠す必要も無い)。
-  if(!slipActive){
-    const m=getMixerMaster(),t=ctx.currentTime;
-    m.gain.cancelScheduledValues(t);
-    m.gain.setValueAtTime(m.gain.value,t);
-    m.gain.linearRampToValueAtTime(0,t+.008);
-    m.gain.setValueAtTime(0,t+.042);
-    m.gain.linearRampToValueAtTime(1,t+.075);
-  }
-  const phase=mixerPhase();
-  stopMixer(false);
-  mixerReversed=!mixerReversed;
-  setReverseUI();
-  startMixer(phase<0?0:phase).then(applyMixerGains);
-}
-document.getElementById("reversePlay").addEventListener("click",toggleReverse);
 
 sourceInput.addEventListener("click",()=>{
   setStatus("Waiting for iPhone Photos to hand over the file...");
@@ -1511,8 +1425,6 @@ async function runTranslate(){
     performanceRec.disabled=false;
     lastTouched="mixer";
     renderedBpm=bpm;
-    mixerReversed=false;setReverseUI();
-    buildReversedSoon(); // 逆向きの波形を空き時間に作り直しておく
     updateEffectiveBpm();
     updateChaosTempoSync(); // 新しいBPMに左右のディレイ/うねりを合わせ直す
     resetSwitches();
@@ -2093,14 +2005,7 @@ function slipStop(){
     mixerMaster.gain.linearRampToValueAtTime(1,t+.008); // ミュート解除。進み続けていた現在地からそのまま再開
   }
 }
-// atPhase は「順方向で数えたループ内の位置(バッファ秒)」。0 なら1小節目の頭から。
-// 逆再生中は、同じ位置が逆向きの波形では末尾から数えた所に来るので折り返して渡す。
-function startOffsetFor(dur,atPhase){
-  if(!(dur>0))return 0;
-  const p=((atPhase%dur)+dur)%dur;
-  return mixerReversed?((dur-p)%dur):p;
-}
-async function startMixer(atPhase=0){
+async function startMixer(){
   if(mixerRunning)return;
   const ctx=getAudioContext();
   if(ctx.state==="suspended")await ctx.resume();
@@ -2108,10 +2013,9 @@ async function startMixer(atPhase=0){
   mixerSources=[];
   mixerGains={};
   mixerLoopDuration=0;
-  const pads=mixerReversed?reversedRendered:rendered;
   for(const mode of["ninja","killer","banker","witch"]){
     for(const variant of["a","b","c"]){
-      const buffer=pads[mode]&&pads[mode][variant];
+      const buffer=rendered[mode][variant];
       if(!buffer)continue;
       if(!mixerLoopDuration)mixerLoopDuration=buffer.duration; // 全variant共通の長さ(8小節)
       const source=ctx.createBufferSource();
@@ -2123,24 +2027,23 @@ async function startMixer(atPhase=0){
       source.playbackRate.setValueAtTime(masterRate,when);
       gain.gain.setValueAtTime(0,when);
       source.connect(gain).connect(getModePanner(mode));
-      source.start(when,startOffsetFor(buffer.duration,atPhase));
+      source.start(when);
       mixerSources.push(source);
       mixerGains[`${mode}-${variant}`]=gain;
     }
   }
-  mixerPhaseAnchor=atPhase;mixerAnchorTime=when; // ここが位置の起点
-  const logoBuf=mixerReversed?reversedSoundLogo:renderedSoundLogo;
-  if(logoBuf){
+  mixerPhaseAnchor=0;mixerAnchorTime=when; // ここが位置の起点
+  if(renderedSoundLogo){
     const logoSource=ctx.createBufferSource();
     const logoGain=ctx.createGain();
-    logoSource.buffer=logoBuf;
+    logoSource.buffer=renderedSoundLogo;
     logoSource.loop=true;
     logoSource.loopStart=0;
-    logoSource.loopEnd=logoBuf.duration;
+    logoSource.loopEnd=renderedSoundLogo.duration;
     logoSource.playbackRate.setValueAtTime(masterRate,when);
     logoGain.gain.setValueAtTime(1,when);
     logoSource.connect(logoGain).connect(getMixerMaster());
-    logoSource.start(when,startOffsetFor(logoBuf.duration,atPhase));
+    logoSource.start(when);
     mixerSources.push(logoSource);
     mixerGains.soundLogo=logoGain;
   }
@@ -2148,22 +2051,20 @@ async function startMixer(atPhase=0){
   // getChaosBus()側のmelodyGainsが盤の位置に応じて開閉する。テンポを変えた時も、
   // 他の音源と同じくsetMasterRateがまとめて追随させる(mixerSourcesに入れてあるため)。
   getChaosBus();
-  const melody=mixerReversed?reversedChaosMelody:renderedChaosMelody;
-  if(melody&&chaosNodes){
+  if(renderedChaosMelody&&chaosNodes){
     for(const dir of CHAOS_DIRS){
-      const buf=melody[dir];
+      const buf=renderedChaosMelody[dir];
       if(!buf)continue;
       const src=ctx.createBufferSource();
       src.buffer=buf;src.loop=true;src.loopStart=0;src.loopEnd=buf.duration;
       src.playbackRate.setValueAtTime(masterRate,when);
       src.connect(chaosNodes.melodyGains[dir]);
-      src.start(when,startOffsetFor(buf.duration,atPhase));
+      src.start(when);
       mixerSources.push(src);
     }
   }
   mixerRunning=true;
   document.getElementById("hardRestart").disabled=false;
-  document.getElementById("reversePlay").disabled=false;
   startMixerGrid();
 }
 
@@ -2309,8 +2210,7 @@ function stopMixer(reset=false){
   mixerSources=[];
   mixerGains={};
   mixerRunning=false;
-  if(reset){resetSwitches();document.getElementById("hardRestart").disabled=true;
-    document.getElementById("reversePlay").disabled=true;mixerReversed=false;setReverseUI()}
+  if(reset){resetSwitches();document.getElementById("hardRestart").disabled=true}
 }
 
 document.querySelectorAll('.switches input[type="radio"]').forEach(el=>el.addEventListener("change",updateMixer));
