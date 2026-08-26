@@ -367,6 +367,9 @@ html{scroll-behavior:smooth}
     <section id="s4">
       <div class="sec-head"><span class="sec-n">04</span><h2 class="sec-t">PAN</h2></div>
       <p>画面左の4つのノブで、キャラクターごとの左右の定位を決めます。上から NINJA / KILLER / BANKER / WITCH の順です。ノブはドラッグして回します。</p>
+      <div class="note">
+        <p><strong>ノブの真下、色付きの帯に <span class="ctl">NINJA</span> などの名前が書かれている部分を左右になぞっても、同じ PAN が動きます。</strong>ノブは小さく、触ると指で隠れて今どちらを向いているか見えなくなるためです。帯なら指の外で針が見えます。なぞれるのは名前が出ている左端だけで、帯のうちパッドが乗っている部分はパッドの操作が優先されます。</p>
+      </div>
       <p>ループ（A・B・C）もワンショット（Ex）も、同じキャラクターなら同じ位置から鳴ります。</p>
       <figure class="empty" id="fig6">
         <img src="docs/images/04-pan.png" alt="PANノブ">
@@ -416,6 +419,9 @@ html{scroll-behavior:smooth}
     <section id="s7">
       <div class="sec-head"><span class="sec-n">07</span><h2 class="sec-t">八卦盤</h2></div>
       <p>後天八卦をかたどった盤です。<strong>ロボ会話の方向性</strong>を決めます。<strong>中心がドライ（原音）</strong>で、外周へ向かうほど深くかかります。</p>
+      <div class="note">
+        <p><strong>盤には途中に境目があります。</strong>中心から外周までの<strong>3分の1あたり</strong>（八卦の記号が並ぶ輪の、内側の半分ほど）です。そこまではロボ語にエフェクトが深くかかっていくだけですが、<strong>そこを越えると読み込んだ音源そのものが引き伸ばされて鳴りはじめ</strong>、外周ではそれだけになります。<strong>目印は描かれていません。</strong>思い切り振り切らないと出てこないので、一度は縁まで引いてみてください。</p>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>操作子</th><th>動作</th></tr></thead>
@@ -457,6 +463,9 @@ html{scroll-behavior:smooth}
         <p><span class="ctl">1/16</span> より細かくすると、繰り返しが速すぎて<strong>音程のついたブザーのように</strong>聴こえます。刻みとして使えるのは <span class="ctl">1/8</span> あたりまでです。</p>
       </div>
       <p>指を離すと元の演奏に戻ります。時間は止まっていないので、離した時点から続きます。</p>
+      <div class="note">
+        <p><strong>押さえたまま、もう一方の手で八卦盤を動かせます。</strong>切り取ったループにそのままエフェクトが乗ります。</p>
+      </div>
       <figure class="empty" id="fig10">
         <img src="docs/images/08-slip.png" alt="スリップループ">
         <div class="plate">図 10 — スリップループ</div>
