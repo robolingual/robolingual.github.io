@@ -33,16 +33,6 @@ button:active{box-shadow:none;transform:translate(2px,2px)}
 button:disabled{cursor:not-allowed}
 input[type=file]{display:none}
 #waveBox{position:relative;width:100%}
-/* パチンコの弾を置く点。左は順回転、右は逆回転。引いた距離が力になる。 */
-.spin-pt{position:absolute;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#f2f2f2,#8a8a8a 60%,#4a4a4a);
-  box-shadow:0 0 0 1px #000,0 1px 3px rgba(0,0,0,.7);
-  touch-action:none;cursor:grab;z-index:3}
-.spin-pt:active{cursor:grabbing}
-#spinL{left:11px}
-#spinR{left:auto;right:11px;margin-left:0;margin-right:-9px}
-.spin-pt.pulling{box-shadow:0 0 0 1px #000,0 0 10px rgba(170,255,0,.9)}
-#spinBands{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
 #wave{display:block}
 #bpm{width:92px;border:2px solid var(--ink);background:#fff;padding:9px;border-radius:0;font-weight:400}
 #translate{width:100%;font-size:20px;padding:15px;background:var(--ink);color:#fff;box-shadow:4px 4px 0 #777;margin:4px 0 14px}
@@ -680,7 +670,7 @@ body.bpm-editing .bpm-panel{outline:2px solid #aaff00;outline-offset:1px}
     <button id="downloadAll" class="dl-wav" type="button" disabled>SAVE</button>
   </div>
   <div class="bay bay-main">
-    <div id="waveBox"><canvas id="wave"></canvas><svg id="spinBands" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div class="spin-pt" id="spinL" data-dir="1"></div><div class="spin-pt" id="spinR" data-dir="-1"></div><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
+    <div id="waveBox"><canvas id="wave"></canvas><div id="filename">NO SOURCE</div><button id="mainAction" type="button">CHOOSE SOURCE</button><div id="waveStatus">Waiting for file...</div></div>
     <div class="preset-row" aria-label="Preset samples">
       <button id="hardRestart" class="preset-btn restart-btn" type="button" disabled>↑RESTART</button>
       <button class="preset-btn" type="button" data-preset="1">PRESET 1</button>
@@ -1675,8 +1665,13 @@ document.querySelectorAll(".mode").forEach(modeEl=>{
   window.addEventListener("pointercancel",release);
 });
 // ================= スピン(パチンコ) =================
-// 波形窓の左右に置いた点を引っ張って離すと、そこから弾が窓へ飛び、
-// ループに一撃を加える。引いた距離が力で、角度は今は見ていない。
+// ※ 操作するUIは今は無い。画面全体を使う一枚上のレイヤーとして作り直す予定で、
+//    その形が決まるまで音の側だけ置いてある(fireSpin を呼べば鳴る)。
+//    最初に付けた「波形窓の中で放射状に引く」点は、引ける距離が窓幅の半分しか
+//    取れず、窓の外へ引いた分も描けないので外した。
+//
+// 引っ張って離すと弾が窓へ飛び、ループに一撃を加える。引いた距離が力。
+// 角度は当面みない(距離と打ち消し合って効かないため。実測で0〜60°は届く量が一定)。
 //   右の点 = 進行方向を遮る向きの打撃 → 逆スピン
 //   左の点 = 進行方向に沿う打撃       → 順スピン
 // 引いている間は音に干渉しない(狙いを定めているだけ)。力が入るのは離した瞬間から。
@@ -1767,60 +1762,6 @@ function fireSpin(dir,force){
   if(!ok)spinning=false;
 }
 
-// --- 引っ張る操作 ---------------------------------------------------------
-// 力は「家の位置からどれだけ離れたか」だけで決める(角度は今は見ない)。
-// 目一杯は波形窓の横幅の半分。そこで頭打ちにして、それ以上引いても増えない。
-const spinBands=document.getElementById("spinBands");
-function drawSpinBand(el,home,x,y,force){
-  if(!spinBands)return;
-  const box=document.getElementById("waveBox").getBoundingClientRect();
-  const pct=(px,py)=>[(px-box.left)/box.width*100,(py-box.top)/box.height*100];
-  const [hx,hy]=pct(home.x,home.y),[tx,ty]=pct(x,y);
-  spinBands.innerHTML=`<line x1="${hx}" y1="${hy}" x2="${tx}" y2="${ty}"
-    stroke="rgba(170,255,0,${.25+force*.65})" stroke-width="${1+force*2}"
-    vector-effect="non-scaling-stroke" stroke-linecap="round"/>`;
-}
-document.querySelectorAll(".spin-pt").forEach(pt=>{
-  const dir=Number(pt.dataset.dir);
-  let id=null,home=null,maxDist=1;
-  pt.addEventListener("pointerdown",e=>{
-    if(id!==null||!mixerRunning)return;
-    id=e.pointerId;
-    const r=pt.getBoundingClientRect(),box=document.getElementById("waveBox").getBoundingClientRect();
-    home={x:r.left+r.width/2,y:r.top+r.height/2};
-    maxDist=Math.max(40,box.width/2);
-    pt.classList.add("pulling");
-    pt.style.transition="none";
-    try{pt.setPointerCapture(id)}catch(_){}
-    e.preventDefault();e.stopPropagation();
-  });
-  pt.addEventListener("pointermove",e=>{
-    if(id===null||e.pointerId!==id)return;
-    const dx=e.clientX-home.x,dy=e.clientY-home.y;
-    const force=Math.min(1,Math.hypot(dx,dy)/maxDist);
-    // 見た目は窓の中に留める。力は実際に引いた距離で決めるので、
-    // 端で止まって見えても、そこから先も溜まり続ける。
-    const box=document.getElementById("waveBox").getBoundingClientRect();
-    const cx=Math.max(box.left+9,Math.min(box.right-9,e.clientX));
-    const cy=Math.max(box.top+9,Math.min(box.bottom-9,e.clientY));
-    pt.style.transform=`translate(${cx-home.x}px,${cy-home.y}px)`;
-    drawSpinBand(pt,home,cx,cy,force);
-    e.preventDefault();e.stopPropagation();
-  });
-  const release=e=>{
-    if(id===null||e.pointerId!==id)return;
-    const dx=e.clientX-home.x,dy=e.clientY-home.y;
-    const force=Math.min(1,Math.hypot(dx,dy)/maxDist);
-    id=null;
-    pt.classList.remove("pulling");
-    pt.style.transition="transform .28s cubic-bezier(.2,1.6,.4,1)"; // ゼンマイが戻る感じ
-    pt.style.transform="translate(0,0)";
-    if(spinBands)spinBands.innerHTML="";
-    fireSpin(dir,force);
-  };
-  pt.addEventListener("pointerup",release);
-  pt.addEventListener("pointercancel",release);
-});
 // ================= /スピン =================
 function stopRecordedPlayback(keepWave=true,resetOffset=true){
   if(performanceSource){try{performanceSource.onended=null;performanceSource.stop()}catch(_){}try{performanceSource.disconnect()}catch(_){}}
